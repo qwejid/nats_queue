@@ -1,0 +1,15 @@
+[tool.poetry]
+name = "my-nats"
+version = "0.1.0"
+description = ""
+authors = ["Kristina Shishkina <k.shishkina@darwinsoft.ru>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.9"
+nats-py = "^2.9.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
