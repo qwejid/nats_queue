@@ -5,7 +5,7 @@ import uuid
 import json
 
 logger = logging.getLogger('nats')
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 
 class Job:
     def __init__(self, name, data, delay=0, meta=None):
@@ -42,7 +42,7 @@ class Queue:
                 await self.js.delete_stream(self.topic_name)
                 logger.info(f"Старый поток {self.topic_name} удален")
             except Exception as e:
-                logger.info(f"Удаление старого потока не требуется: {e}")
+                logger.info(f"Удаление старого потока не требуется")
 
             # Создание потока с учетом всех приоритетных тем
             subjects = [f"{self.topic_name}_priority_{i}" for i in range(self.priorities)]
@@ -129,22 +129,37 @@ class Worker:
         subscriptions = []
         for priority in range(self.priorities):
             topic = f"{self.topic_name}_priority_{priority}"
-            sub = await self.js.pull_subscribe(topic, durable=f"worker_group_{priority}")
-            subscriptions.append(sub)
-        
+            try:
+                sub = await self.js.pull_subscribe(topic, durable=f"worker_group_{priority}")
+                logger.debug(f"Подписка на {topic} успешна: {sub}")  # Подписка на топик успешна
+                subscriptions.append(sub)
+            except Exception as e:
+                logger.error(f"Ошибка подписки на {topic}: {e}")
+                continue
+
         while True:
+            
+            found_messages = False
             for sub in subscriptions:
+                logger.info(f"Получено {sub}")
                 try:
                     msgs = await sub.fetch(self.concurrency, timeout=5)
+                    logger.debug(f"Получено {len(msgs)} сообщений")  # Получено сообщений
                     if msgs:
+                        found_messages = True
                         for msg in msgs:
+                            logger.debug(f"Обработка сообщения {msg.data.decode()}")  # Обработка сообщения
                             asyncio.create_task(self._process_task(msg))
                     else:
+                        logger.info("Нет непрочитанных сообщений")  # Нет непрочитанных сообщений
                         await asyncio.sleep(1) 
                     break  # Если задачи найдены, приоритетный pull завершён
                 except Exception as e:
                     logger.error(f"Ошибка получения сообщений: {e}")
                     await asyncio.sleep(1) 
+            if not found_messages:
+                logger.debug("Нет подходящих подписок")  # Нет подходящих подписок
+                await asyncio.sleep(1)
 
 
 async def process_task(msg):
@@ -159,7 +174,7 @@ async def main():
     job = Job("task_1", {"data": "test"}, delay=0)
     await queue.addJob(job, priority=1)
 
-    worker = Worker("example_queue", concurrency=5, rate_limit={"max": 10, "duration": 1}, processor_callback=process_task, priorities=3)
+    worker = Worker("example_queue", concurrency=1, rate_limit={"max": 10, "duration": 1}, processor_callback=process_task, priorities=3)
     await worker.connect()
     await worker.start()
 
