@@ -1,3 +1,5 @@
 /dist
 /venv
 /nats_data
+*.conf
+__pycache__
