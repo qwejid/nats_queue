@@ -9,6 +9,7 @@ readme = "README.md"
 python = "^3.9"
 nats-py = "^2.9.0"
 pytest-asyncio = "^0.24.0"
+mock = "^5.1.0"
 
 [tool.poetry.dev-dependencies]
 pytest = "^8.3.0" 
