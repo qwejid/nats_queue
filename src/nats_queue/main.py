@@ -4,9 +4,12 @@ import asyncio
 import uuid
 import json
 import time
+import os
 
 logger = logging.getLogger('nats')
 logging.basicConfig(level=logging.DEBUG)
+user = os.environ.get('NATS_USER')
+password = os.environ.get('NATS_PASSWORD')
 
 class Job:
     def __init__(self, queue_name, name, data, delay=0, meta=None):
@@ -40,7 +43,7 @@ class Queue:
     async def connect(self):
         logger.info("Подключение к NATS...")
         try:
-            self.nc = await nats.connect(servers=["nats://localhost:4222"], user="ruser", password="T0pS3cr3t")
+            self.nc = await nats.connect(servers=["nats://localhost:4222"], user=user, password=password)
             self.js = self.nc.jetstream()
             logger.info("Успешно подключено к NATS")
 
@@ -92,7 +95,7 @@ class Worker:
     async def connect(self):
         logger.info("Подключение воркера к NATS...")
         try:
-            self.nc = await nats.connect(servers=["nats://localhost:4222"], user="ruser", password="T0pS3cr3t")
+            self.nc = await nats.connect(servers=["nats://localhost:4222"], user=user, password=password)
             self.js = self.nc.jetstream()
             logger.info("Воркер успешно подключен к NATS")
         except Exception as e:
