@@ -45,3 +45,24 @@ async def test_add_job():
     await queue.js.delete_stream(queue.topic_name)
     await queue.close()
 
+@pytest.mark.asyncio
+async def test_add_multiple_jobs():
+    topic_name = "test_queue"
+    queue = Queue(topic_name=topic_name, priorities=3)
+    await queue.connect()
+
+    jobs = [
+        Job(queue_name="test_queue", name="job1", data={"key": "value1"}),
+        Job(queue_name="test_queue", name="job2", data={"key": "value2"}),
+    ]
+    await queue.addJobs(jobs)
+
+    for job in jobs:
+        sub = await queue.js.subscribe(f"{job.queue_name}.{job.name}.*")
+        message = await sub.next_msg()
+        assert message is not None
+        assert json.loads(message.data.decode()) == job.to_dict()
+
+    await queue.js.delete_stream(queue.topic_name)
+    await queue.close()
+
