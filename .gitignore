@@ -3,3 +3,4 @@
 /nats_data
 *.conf
 __pycache__
+.env
