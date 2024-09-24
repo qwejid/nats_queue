@@ -99,6 +99,7 @@ class RateLimiter:
         logger.debug(f"Увеличение счетчика обработанных задач: {self.processed_count}.")
 
     async def check_limit(self):
+        logger.info(f"Checking rate limit")
         current_time = time.time()
         elapsed = current_time - self.start_time
         
@@ -141,29 +142,30 @@ class Worker:
             logger.info("Воркер успешно отключен")
 
     async def _process_task(self, job_data, msg):
-        async with self.semaphore:  # Захватываем семафор
-            try:
-                logger.info(f"Обработка задачи {job_data['name']}")
+       async with self.semaphore:  # Захватываем семафор
+           try:
+               logger.info(f"Обработка задачи {job_data['name']}")
 
-                if job_data.get('retry_count', 0) >= self.max_retries:
-                    logger.error(f"Максимальное количество попыток для задачи {job_data['name']} превышено.")
-                    return
+               if job_data.get('retry_count', 0) >= self.max_retries:
+                   logger.error(f"Максимальное количество попыток для задачи {job_data['name']} превышено.")
+                   return
 
-                timeout = self.rate_limit['duration']
-                await asyncio.wait_for(self.processor_callback(job_data), timeout=timeout)
-                await msg.ack()
-                logger.info(f"Задача {job_data['name']} успешно обработана.")
-                msg_id = msg.headers.get("Nats-Msg-Id", None)
-                self.processing_jobs.remove(msg_id)  # Удаляем идентификатор после успешной обработки
+               timeout = self.rate_limit['duration']
+               await asyncio.wait_for(self.processor_callback(job_data), timeout=timeout)
 
-            except asyncio.TimeoutError:
-                job_data['retry_count'] += 1
-                logger.error(f"Тайм-аут задачи {job_data['name']}. Попытка {job_data['retry_count']}.")
-                await self.queue.put((job_data, msg))
-            except Exception as e:
-                job_data['retry_count'] += 1
-                logger.error(f"Ошибка при обработке задачи: {str(e)}")
-                await self.queue.put((job_data, msg))
+               await msg.ack()  # Подтверждаем успешную обработку
+               msg_id = msg.headers.get("Nats-Msg-Id", None)
+               self.processing_jobs.remove(msg_id)  # Удаляем идентификатор после успешной обработки
+               logger.info(f"Задача {job_data['name']} успешно обработана.")
+
+           except asyncio.TimeoutError:
+               job_data['retry_count'] += 1
+               logger.error(f"Тайм-аут задачи {job_data['name']}. Попытка {job_data['retry_count']}.")
+               await self.queue.put((job_data, msg))  # Повторно добавляем задачу в очередь
+           except Exception as e:
+               job_data['retry_count'] += 1
+               logger.error(f"Ошибка при обработке задачи: {str(e)}")
+               await self.queue.put((job_data, msg))
 
     async def fetch_messages(self, sub):
         try:
@@ -212,8 +214,10 @@ class Worker:
                     break
 
                 job_data, msg = await self.queue.get()
+                logger.info('Получена задача из очереди')
                 asyncio.create_task(self._process_task(job_data, msg))
                 limiter.increment()
+                
 
             if self.queue.empty():
                 logger.info("Нет непрочитанных сообщений, ожидаем...")
