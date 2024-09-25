@@ -148,7 +148,7 @@ class Worker:
             try:
                 logger.info(f"Обработка задачи {job_data['name']}")
  
-                if job_data.get('retry_count', 0) >= self.max_retries:
+                if job_data.get('retry_count', 0) > self.max_retries:
                     raise ValueError(f"Максимальное количество попыток для задачи {job_data['name']} превышено.")
  
                 timeout = self.rate_limit['duration']
