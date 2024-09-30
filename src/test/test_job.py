@@ -1,23 +1,37 @@
 import pytest
 from nats_queue.main import Job
 
-@pytest.mark.asyncio
-async def test_job_creation():
-    job = Job(queue_name="my_queue", name="test_task", data={"key": "value"}, delay=5, meta={"priority": "high"})
+def test_job_initialization():
+    job = Job(queue_name="my_queue", name="task_1", data={"key": "value"})
     
-    assert job.name == "test_task"
+    assert job.queue_name == "my_queue"
+    assert job.name == "task_1"
     assert job.data == {"key": "value"}
-    assert job.delay == 5
-    assert job.meta == {"priority": "high"}
-    assert isinstance(job.id, str)
-    assert job.subject == "my_queue.test_task"
+    assert job.meta["retry_count"] == 0
+    assert job.meta["timeout"] is None
+
+def test_job_initialization_with_delay():
+    job = Job(queue_name="my_queue", name="task_1", data={"key": "value"}, delay=100)
+    
+    assert job.delay == 100
+    assert job.meta["start_time"] is not None
+    assert job.meta["timeout"] is None
+
+def test_job_initialization_without_queue_name_or_name():
+    with pytest.raises(ValueError, match="queue_name and name cannot be empty"):
+        Job(queue_name="", name="", data={"key": "value"})
+
+def test_job_subject():
+    job = Job(queue_name="my_queue", name="task_1", data={"key": "value"})
+    
+    assert job.subject == "my_queue.task_1"
 
 def test_job_to_dict():
-    job = Job(queue_name="my_queue", name="test_task", data={"key": "value"}, delay=5, meta={"priority": "high"})
+    job = Job(queue_name="my_queue", name="task_1", data={"key": "value"})
     job_dict = job.to_dict()
     
     assert job_dict["id"] == job.id
-    assert job_dict["name"] == job.name
-    assert job_dict["data"] == job.data
-    assert job_dict["delay"] == job.delay
-    assert job_dict["meta"] == job.meta
+    assert job_dict["queue_name"] == "my_queue"
+    assert job_dict["name"] == "task_1"
+    assert job_dict["data"] == {"key": "value"}
+    assert job_dict["meta"]["retry_count"] == 0
