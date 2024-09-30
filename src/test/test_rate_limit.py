@@ -12,7 +12,7 @@ async def test_rate_limiter_initialization():
     assert limiter.max_tasks == max_tasks
     assert limiter.duration == duration
     assert limiter.processed_count == 0
-    assert limiter.start_time <= time.time() 
+    assert limiter.start_time <= int(time.time() * 1000)
 
 @pytest.mark.asyncio
 async def test_rate_limiter_increment():
@@ -50,9 +50,9 @@ async def test_rate_limiter_check_limit_with_wait():
     for _ in range(max_tasks):
         limiter.increment()
 
-    start_time = time.time()
+    start_time = int(time.time() * 1000)
     await limiter.check_limit()
-    end_time = time.time()
+    end_time = int(time.time() * 1000)
 
     assert end_time - start_time >= duration 
     assert limiter.processed_count == 0
