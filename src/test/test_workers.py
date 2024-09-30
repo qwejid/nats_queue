@@ -277,7 +277,51 @@ async def test_worker_fetch_retry():
         await worker.close()
         await worker2.close()
 
+@pytest.mark.asyncio
+async def test_worker_planned_time():
+    queue = Queue(topic_name="my_queue")
+    await queue.connect()
 
+    job = Job(queue_name="my_queue", name="task_1", data={"key": "value"}, delay=15000)
+    await queue.addJob(job)
+
+    worker = Worker(
+        topic_name="my_queue",
+        concurrency=3,
+        rate_limit={"max": 5, "duration": 5000},
+        processor_callback=process_job
+    )
+    
+    await worker.connect()
+    try:
+        sub = await worker.get_subscriptions()
+        msgs = await worker.fetch_messages(sub[0])
+
+        assert len(msgs) == 1
+        msg = msgs[0]
+
+        job_data = json.loads(msg.data.decode())
+        assert job_data['name'] == 'task_1'
+        assert job_data['meta']['retry_count'] == 0
+
+        await worker._process_task(msg)
+        await asyncio.sleep(15)
+        msgs = await worker.fetch_messages(sub[0])
+        assert len(msgs) == 1
+        msg = msgs[0]
+        job_data = json.loads(msg.data.decode())
+        assert job_data['name'] == 'task_1'
+        assert job_data['meta']['retry_count'] == 0
+        assert msg.metadata.num_delivered == 2
+
+
+    finally:
+        await queue.js.delete_stream(queue.topic_name)
+        await queue.close()
+        await worker.close()
+
+
+    
 
 
 
