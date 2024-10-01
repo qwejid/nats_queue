@@ -180,13 +180,6 @@ class Worker:
             await self.nc.close()
             logger.info("Воркер успешно отключен")
 
-    async def send_to_dead_letter_queue(self, msg):
-        try:
-            await self.js.publish(f"{self.topic_name}.deadletter", msg.data)
-            logger.info(f"Сообщение {msg.subject} отправлено в DLQ.")
-        except Exception as e:
-            logger.error(f"Ошибка при отправке в DLQ: {e}")
-
     async def _process_task(self, msg):
         try:
             self.active_tasks += 1
