@@ -67,9 +67,10 @@ async def test_worker_process_task_success():
         msg = (await worker.fetch_messages(sub))[0]
 
         await worker._process_task(msg)
-        job_data = json.loads(msg.data.decode())
 
-        assert job_data['meta']['retry_count'] == 0
+        msgs = await worker.fetch_messages(sub)
+        assert msgs is None
+
     finally:
         await queue.js.delete_stream(queue.topic_name)
         await queue.close()
