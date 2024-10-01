@@ -4,6 +4,7 @@ from nats_queue.main import Queue, Job
 from nats.aio.client import Client as NATS
 from nats.js.client import JetStreamContext as JetStream
 
+
 @pytest.mark.asyncio
 async def test_queue_initialization():
     topic_name = "test_topic"
@@ -19,13 +20,14 @@ async def test_queue_initialization():
 async def test_queue_connect_and_close():
     topic_name = "test_topic"
     queue = Queue(topic_name=topic_name)
-    
+
     await queue.connect()
     assert isinstance(queue.nc, NATS)
     assert isinstance(queue.js, JetStream)
     await queue.js.delete_stream(queue.topic_name)
     await queue.close()
     assert queue.nc.is_closed
+
 
 @pytest.mark.asyncio
 async def test_add_job():
@@ -44,6 +46,7 @@ async def test_add_job():
 
     await queue.js.delete_stream(queue.topic_name)
     await queue.close()
+
 
 @pytest.mark.asyncio
 async def test_add_multiple_jobs():
@@ -66,17 +69,26 @@ async def test_add_multiple_jobs():
     await queue.js.delete_stream(queue.topic_name)
     await queue.close()
 
+
 @pytest.mark.asyncio
 async def test_add_job_with_priority():
     topic_name = "test_queue"
     queue = Queue(topic_name=topic_name, priorities=3)
     await queue.connect()
 
-    job_high = Job(queue_name="test_queue", name="high_priority_job", data={"key": "high_value"})
-    job_low = Job(queue_name="test_queue", name="low_priority_job", data={"key": "low_value"})
+    job_high = Job(
+        queue_name="test_queue",
+        name="high_priority_job",
+        data={"key": "high_value"},
+    )
+    job_low = Job(
+        queue_name="test_queue",
+        name="low_priority_job",
+        data={"key": "low_value"},
+    )
 
-    await queue.addJob(job_high, priority=1) 
-    await queue.addJob(job_low, priority=3)    
+    await queue.addJob(job_high, priority=1)
+    await queue.addJob(job_low, priority=3)
 
     # Проверка высокого приоритета
     sub_high = await queue.js.subscribe(f"{job_high.queue_name}.{job_high.name}.1")
@@ -93,20 +105,18 @@ async def test_add_job_with_priority():
     await queue.js.delete_stream(queue.topic_name)
     await queue.close()
 
+
 @pytest.mark.asyncio
 async def test_no_stream():
     topic_name = "non_existent_stream"
     queue = Queue(topic_name=topic_name)
-    
+
     await queue.connect()
 
     job = Job(queue_name="test_queue", name="test_job", data={"key": "value"})
-    
+
     with pytest.raises(Exception):
         await queue.addJob(job, priority=1)
 
     await queue.js.delete_stream(queue.topic_name)
     await queue.close()
-
-
-

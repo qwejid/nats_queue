@@ -1,7 +1,7 @@
 import pytest
-import asyncio
 import time
-from nats_queue.main import RateLimiter 
+from nats_queue.main import RateLimiter
+
 
 @pytest.mark.asyncio
 async def test_rate_limiter_initialization():
@@ -14,6 +14,7 @@ async def test_rate_limiter_initialization():
     assert limiter.processed_count == 0
     assert limiter.start_time <= int(time.time() * 1000)
 
+
 @pytest.mark.asyncio
 async def test_rate_limiter_increment():
     max_tasks = 5
@@ -25,13 +26,14 @@ async def test_rate_limiter_increment():
 
     assert limiter.processed_count == 3
 
+
 @pytest.mark.asyncio
 async def test_rate_limiter_check_limit_no_wait():
     max_tasks = 5
     duration = 2
     limiter = RateLimiter(max_tasks, duration)
 
-    for _ in range(max_tasks-1):
+    for _ in range(max_tasks - 1):
         limiter.increment()
 
     start_time = time.time()
@@ -40,6 +42,7 @@ async def test_rate_limiter_check_limit_no_wait():
 
     assert end_time - start_time < 2
     assert limiter.processed_count == 4
+
 
 @pytest.mark.asyncio
 async def test_rate_limiter_check_limit_with_wait():
@@ -54,8 +57,9 @@ async def test_rate_limiter_check_limit_with_wait():
     await limiter.check_limit()
     end_time = int(time.time() * 1000)
 
-    assert end_time - start_time >= duration 
+    assert end_time - start_time >= duration
     assert limiter.processed_count == 0
+
 
 @pytest.mark.asyncio
 async def test_rate_limiter_reset():
