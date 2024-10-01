@@ -123,7 +123,8 @@ class RateLimiter:
             await self._wait_for_limit(elapsed)
         elif elapsed > self.duration:
             logger.info(
-                f"Превышено время ожидания лимита обработки. Обработано {self.processed_count} из {self.max_tasks}."
+                f"""Превышено время ожидания лимита обработки.
+                Обработано {self.processed_count} из {self.max_tasks}."""
             )
             self._reset_limit()
 
@@ -195,7 +196,8 @@ class Worker:
                 planned_time = job_start_time - datetime.now()
                 delay = int(planned_time.total_seconds())
                 logger.info(
-                    f"Время для задачи {job_data['name']} еще не наступило. Повторная отправка через {delay}."
+                    f"""Время для задачи {job_data['name']} еще не наступило.
+                    Повторная отправка через {delay}."""
                 )
                 self.active_tasks -= 1
                 await msg.nak(delay=delay)
@@ -206,7 +208,7 @@ class Worker:
 
             if job_data.get("meta").get("retry_count") > self.max_retries:
                 raise ValueError(
-                    f"Максимальное количество попыток для задачи {job_data['name']} превышено."
+                    f"Максимальное количество попыток {job_data['name']} превышено."
                 )
 
             timeout = job_data["meta"]["timeout"]
