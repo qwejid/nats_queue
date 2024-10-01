@@ -103,20 +103,24 @@ class RateLimiter:
 
     async def check_limit(self):
         current_time = int(time.time() * 1000)
-
         elapsed = current_time - self.start_time
         
         if elapsed < self.duration and self.processed_count >= self.max_tasks:
-            wait_time = (self.duration - elapsed)/1000
-            logger.info(f"Достижение лимита обработки. Ожидание {wait_time:.2f} мс.")
-            await asyncio.sleep(wait_time)
-            self.start_time = int(time.time() * 1000)
-            self.processed_count = 0
-            logger.debug(f"Состояние сброшено: start_time обновлен, processed_count сброшен.")
+            await self._wait_for_limit(elapsed)
         elif elapsed > self.duration:
             logger.info(f"Превышено время ожидания лимита обработки. Обработано {self.processed_count} из {self.max_tasks}.")
-            self.start_time = int(time.time() * 1000)
-            self.processed_count = 0
+            self._reset_limit()
+        
+    async def _wait_for_limit(self, elapsed):
+        wait_time = (self.duration - elapsed) / 1000
+        logger.info(f"Достижение лимита обработки. Ожидание {wait_time:.2f} мс.")
+        await asyncio.sleep(wait_time)
+        self._reset_limit()
+        
+    def _reset_limit(self):
+        self.start_time = int(time.time() * 1000)
+        self.processed_count = 0
+        logger.debug(f"Состояние сброшено: start_time обновлен, processed_count сброшен.")
 
 
 class Worker:
