@@ -15,7 +15,13 @@ jobs:
         ports:
           - "4222:4222"
           - "8222:8222"
-        options: --js --store_dir /data/jetstream --http_port 8222 --server_name nats-server --user ruser --password T0pS3cr3t
+        options: >-
+          --js
+          --store_dir /data/jetstream
+          --http_port 8222
+          --server_name nats-server
+          --user ruser
+          --password T0pS3cr3t
 
     strategy:
       matrix:
@@ -38,7 +44,7 @@ jobs:
 
       - name: Run Flake8
         run: |
-          flake8  # Запуск линтера Flake8
+          flake8
 
       - name: Run Tests
         run: |
