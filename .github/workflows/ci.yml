@@ -16,7 +16,7 @@ jobs:
           - "4222:4222"
           - "8222:8222"
         options: >-
-          --jetstream
+          -js
           --store_dir /data/jetstream
           --http_port 8222
           --server_name nats-server
