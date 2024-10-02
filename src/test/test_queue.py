@@ -1,38 +1,74 @@
+import os
 import pytest
+import pytest_asyncio
 import json
 from nats_queue.main import Queue, Job
 from nats.aio.client import Client as NATS
 from nats.js.client import JetStreamContext as JetStream
+import nats
+
+user = os.environ.get("NATS_USER")
+password = os.environ.get("NATS_PASSWORD")
+
+
+@pytest_asyncio.fixture
+async def get_nc():
+    nc = await nats.connect(
+        servers=["nats://localhost:4222"], user=user, password=password
+    )
+    yield nc
+
+    js = nc.jetstream()
+    streams = await js.streams_info()
+    stream_names = [stream.config.name for stream in streams]
+
+    for name in stream_names:
+        await js.delete_stream(name)
+
+    await nc.close()
 
 
 @pytest.mark.asyncio
-async def test_queue_initialization():
+async def test_queue_initialization(get_nc):
     topic_name = "test_topic"
     priorities = 3
-    queue = Queue(topic_name=topic_name, priorities=priorities)
+    nc = get_nc
+    queue = Queue(nc, topic_name=topic_name, priorities=priorities)
     assert queue.topic_name == topic_name
     assert queue.priorities == priorities
-    assert queue.nc is None
+    assert isinstance(queue.nc, NATS)
     assert queue.js is None
 
 
 @pytest.mark.asyncio
-async def test_queue_connect_and_close():
+async def test_queue_connect_success(get_nc):
     topic_name = "test_topic"
-    queue = Queue(topic_name=topic_name)
+    nc = get_nc
+    queue = Queue(nc, topic_name=topic_name)
 
     await queue.connect()
-    assert isinstance(queue.nc, NATS)
     assert isinstance(queue.js, JetStream)
+
+
+@pytest.mark.asyncio
+async def test_queue_close_success():
+    topic_name = "test_topic"
+    nc = await nats.connect(
+        servers=["nats://localhost:4222"], user=user, password=password
+    )
+    queue = Queue(nc, topic_name=topic_name)
+
+    await queue.connect()
     await queue.js.delete_stream(queue.topic_name)
     await queue.close()
     assert queue.nc.is_closed
 
 
 @pytest.mark.asyncio
-async def test_add_job():
+async def test_add_job_success(get_nc):
     topic_name = "test_queue"
-    queue = Queue(topic_name=topic_name, priorities=3)
+    nc = get_nc
+    queue = Queue(nc, topic_name=topic_name, priorities=3)
     await queue.connect()
 
     job = Job(queue_name="test_queue", name="test_job", data={"key": "value"})
@@ -44,14 +80,12 @@ async def test_add_job():
     assert message is not None
     assert json.loads(message.data.decode()) == job.to_dict()
 
-    await queue.js.delete_stream(queue.topic_name)
-    await queue.close()
-
 
 @pytest.mark.asyncio
-async def test_add_multiple_jobs():
+async def test_add_jobs_success(get_nc):
     topic_name = "test_queue"
-    queue = Queue(topic_name=topic_name, priorities=3)
+    nc = get_nc
+    queue = Queue(nc, topic_name=topic_name, priorities=3)
     await queue.connect()
 
     jobs = [
@@ -66,14 +100,12 @@ async def test_add_multiple_jobs():
         assert message is not None
         assert json.loads(message.data.decode()) == job.to_dict()
 
-    await queue.js.delete_stream(queue.topic_name)
-    await queue.close()
-
 
 @pytest.mark.asyncio
-async def test_add_job_with_priority():
+async def test_add_job_with_priority_success(get_nc):
     topic_name = "test_queue"
-    queue = Queue(topic_name=topic_name, priorities=3)
+    nc = get_nc
+    queue = Queue(nc, topic_name=topic_name, priorities=3)
     await queue.connect()
 
     job_high = Job(
@@ -102,14 +134,12 @@ async def test_add_job_with_priority():
     assert message_low is not None
     assert json.loads(message_low.data.decode()) == job_low.to_dict()
 
-    await queue.js.delete_stream(queue.topic_name)
-    await queue.close()
-
 
 @pytest.mark.asyncio
-async def test_no_stream():
+async def test_add_job_in_non_existent_stream(get_nc):
     topic_name = "non_existent_stream"
-    queue = Queue(topic_name=topic_name)
+    nc = get_nc
+    queue = Queue(nc, topic_name=topic_name)
 
     await queue.connect()
 
@@ -118,5 +148,10 @@ async def test_no_stream():
     with pytest.raises(Exception):
         await queue.addJob(job, priority=1)
 
-    await queue.js.delete_stream(queue.topic_name)
-    await queue.close()
+
+@pytest.mark.asyncio
+async def test_connect_raises_exception():
+    queue = Queue("example_con", topic_name="test_topic")
+
+    with pytest.raises(Exception):
+        await queue.connect()
