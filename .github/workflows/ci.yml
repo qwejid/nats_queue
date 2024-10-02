@@ -16,15 +16,6 @@ jobs:
           - "4222:4222"
           - "8222:8222"
         options: --js --store_dir /data/jetstream --http_port 8222 --server_name nats-server --user ruser --password T0pS3cr3t
-      python39:
-        image: python:3.9-alpine
-        options: --entrypoint ""
-      python310:
-        image: python:3.10-alpine
-        options: --entrypoint ""
-      python311:
-        image: python:3.11-alpine
-        options: --entrypoint ""
 
     strategy:
       matrix:
@@ -33,6 +24,11 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
 
       - name: Install dependencies
         run: |
@@ -46,4 +42,4 @@ jobs:
 
       - name: Run Tests
         run: |
-          python${{ matrix.python-version }} -m pytest --cov=src/nats_queue --cov-report=html src/test/
+          python -m pytest --cov=src/nats_queue --cov-report=html src/test/
