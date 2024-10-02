@@ -1,11 +1,11 @@
 from datetime import datetime, timedelta
 import logging
 import nats
+from nats.aio.client import Client
 import asyncio
 import uuid
 import json
 import time
-import os
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -15,9 +15,6 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger("nats")
-
-user = os.environ.get("NATS_USER")
-password = os.environ.get("NATS_PASSWORD")
 
 
 class Job:
@@ -54,20 +51,17 @@ class Job:
 
 
 class Queue:
-    def __init__(self, topic_name: str, priorities: int = 1):
+    def __init__(self, connection: Client, topic_name: str, priorities: int = 1):
         self.topic_name = topic_name
         self.priorities = priorities
-        self.nc = None
+        self.nc = connection
         self.js = None
 
     async def connect(self):
-        logger.info("Подключение к NATS...")
+        logger.info("Подключение к JetStream...")
         try:
-            self.nc = await nats.connect(
-                servers=["nats://localhost:4222"], user=user, password=password
-            )
             self.js = self.nc.jetstream()
-            logger.info("Успешно подключено к NATS")
+            logger.info("Успешно подключено к JetStream")
 
             subjects = [f"{self.topic_name}.*.*"]
             await self.js.add_stream(name=self.topic_name, subjects=subjects)
@@ -145,6 +139,7 @@ class RateLimiter:
 class Worker:
     def __init__(
         self,
+        connection: Client,
         topic_name: str,
         concurrency: int,
         rate_limit: dict,
@@ -152,12 +147,12 @@ class Worker:
         priorities: int = 1,
         max_retries: int = 3,
     ):
+        self.nc = connection
         self.topic_name = topic_name
         self.concurrency = concurrency
         self.rate_limit = rate_limit
         self.processor_callback = processor_callback
         self.priorities = priorities
-        self.nc = None
         self.js = None
         self.max_retries = max_retries
         self.active_tasks = 0
@@ -165,9 +160,6 @@ class Worker:
     async def connect(self):
         logger.info("Подключение воркера к NATS...")
         try:
-            self.nc = await nats.connect(
-                servers=["nats://localhost:4222"], user=user, password=password
-            )
             self.js = self.nc.jetstream()
             logger.info("Воркер успешно подключен к NATS")
         except Exception as e:
@@ -307,60 +299,3 @@ class Worker:
                     logger.info(
                         "Нет сообщений для обработки в данном потоке смотрим опять"
                     )
-
-
-async def process_job(job_data):
-    # logger.info(f"Выполняется {job_data['name']} что-то делает...")
-    await asyncio.sleep(6)
-
-
-async def main():
-    try:
-        queue = Queue(topic_name="my_queue", priorities=3)
-        await queue.connect()
-
-        jobs1 = [
-            Job(
-                queue_name="my_queue",
-                name=f"task_{i}",
-                data={"key": f"value_{i}"},
-                timeout=10,
-            )
-            for i in range(1, 8)
-        ]
-        jobs2 = [
-            Job(
-                queue_name="my_queue",
-                name=f"task_{i}",
-                data={"key": f"value_{i}"},
-                timeout=10,
-            )
-            for i in range(8, 13)
-        ]
-
-        await queue.addJobs(jobs2, 2)
-        await queue.addJobs(jobs1, 1)
-
-        worker = Worker(
-            topic_name="my_queue",
-            concurrency=3,
-            rate_limit={"max": 5, "duration": 15000},
-            processor_callback=process_job,
-            priorities=3,
-            max_retries=1,
-        )
-
-        await worker.connect()
-
-        await worker.start()
-    except Exception as e:
-        logger.error(f"Ошибка в main: {e}", exc_info=True)
-    finally:
-        logger.info("Остановка всех воркеров и очистка стрима...")
-        await queue.js.delete_stream(queue.topic_name)
-        await queue.close()
-        await worker.close()
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
