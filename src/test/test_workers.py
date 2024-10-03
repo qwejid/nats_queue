@@ -47,13 +47,13 @@ async def test_worker_initialization(get_nc):
         nc,
         topic_name="my_queue",
         concurrency=3,
-        rate_limit={"max": 5, "duration": 15000},
+        rate_limit=(5, 15000),
         processor_callback=process_job,
     )
 
     assert worker.topic_name == "my_queue"
     assert worker.concurrency == 3
-    assert worker.rate_limit == {"max": 5, "duration": 15000}
+    assert worker.rate_limit == (5, 15000)
     assert worker.max_retries == 3
 
 
@@ -64,7 +64,7 @@ async def test_worker_connect_success(get_nc):
         nc,
         topic_name="my_queue",
         concurrency=3,
-        rate_limit={"max": 5, "duration": 30},
+        rate_limit=(5, 30),
         processor_callback=process_job,
     )
 
@@ -80,7 +80,7 @@ async def test_worker_connect_faild():
         "nc",
         topic_name="my_queue",
         concurrency=3,
-        rate_limit={"max": 5, "duration": 30},
+        rate_limit=(5, 30),
         processor_callback=process_job,
     )
     with pytest.raises(Exception):
@@ -96,7 +96,7 @@ async def test_worker_connect_close_success():
         nc,
         topic_name="my_queue",
         concurrency=3,
-        rate_limit={"max": 5, "duration": 30},
+        rate_limit=(5, 30),
         processor_callback=process_job,
     )
 
@@ -121,14 +121,14 @@ async def test_worker_fetch_messages_success(get_nc):
         nc,
         topic_name="my_queue",
         concurrency=3,
-        rate_limit={"max": 5, "duration": 15000},
+        rate_limit=(5, 15000),
         processor_callback=process_job,
     )
     await worker.connect()
 
     sub = await worker.js.pull_subscribe(f"{worker.topic_name}.*.*")
 
-    msgs = await worker.fetch_messages(sub)
+    msgs = await worker.fetch_messages(sub, worker.concurrency)
     assert len(msgs) == worker.concurrency
     fetched_job_data_1 = json.loads(msgs[0].data.decode())
     assert fetched_job_data_1["name"] == "task_1"
@@ -153,17 +153,18 @@ async def test_worker_process_task_success(get_nc):
         nc,
         topic_name="my_queue",
         concurrency=3,
-        rate_limit={"max": 5, "duration": 15000},
+        rate_limit=(5, 15000),
         processor_callback=process_job,
+        timeout_fetch=5,
     )
     await worker.connect()
     sub = await worker.js.pull_subscribe(f"{worker.topic_name}.*.*")
-    msg = (await worker.fetch_messages(sub))[0]
+    msg = (await worker.fetch_messages(sub, worker.concurrency))[0]
     job_data = json.loads(msg.data.decode())
     assert job_data["name"] == "task_1"
 
     await worker._process_task(msg)
-    msgs = await worker.fetch_messages(sub)
+    msgs = await worker.fetch_messages(sub, worker.concurrency)
     assert msgs is None
 
 
@@ -180,19 +181,19 @@ async def test_worker_process_task_with_retry(get_nc):
         nc,
         topic_name="my_queue",
         concurrency=3,
-        rate_limit={"max": 5, "duration": 15000},
+        rate_limit=(5, 15000),
         processor_callback=process_job_with_error,
     )
     await worker.connect()
     sub = await worker.get_subscriptions()
-    msgs = await worker.fetch_messages(sub[0])
+    msgs = await worker.fetch_messages(sub[0], worker.concurrency)
     assert len(msgs) == 1
     msg = msgs[0]
     await worker._process_task(msg)
     job_data = json.loads(msg.data.decode())
     assert job_data["name"] == "task_1"
     assert job_data["meta"]["retry_count"] == 0
-    msgs = await worker.fetch_messages(sub[0])
+    msgs = await worker.fetch_messages(sub[0], worker.concurrency)
     assert len(msgs) == 1
     msg = msgs[0]
     job_data = json.loads(msg.data.decode())
@@ -214,18 +215,18 @@ async def test_worker_process_task_exceeds_max_retries(get_nc):
         nc,
         topic_name="my_queue",
         concurrency=3,
-        rate_limit={"max": 5, "duration": 15000},
+        rate_limit=(5, 15000),
         processor_callback=process_job,
     )
     await worker.connect()
     sub = await worker.get_subscriptions()
-    msgs = await worker.fetch_messages(sub[0])
+    msgs = await worker.fetch_messages(sub[0], worker.concurrency)
     assert len(msgs) == 1
     msg = msgs[0]
     await worker._process_task(msg)
     job_data = json.loads(msg.data.decode())
     assert job_data["meta"]["retry_count"] == 4
-    msgs = await worker.fetch_messages(sub[0])
+    msgs = await worker.fetch_messages(sub[0], worker.concurrency)
     assert msgs is None
 
 
@@ -243,12 +244,12 @@ async def test_worker_process_task_with_timeout(get_nc):
         nc,
         topic_name="my_queue",
         concurrency=3,
-        rate_limit={"max": 5, "duration": 2000},
+        rate_limit=(5, 2000),
         processor_callback=process_job_with_timeout,
     )
     await worker.connect()
     sub = await worker.get_subscriptions()
-    msgs = await worker.fetch_messages(sub[0])
+    msgs = await worker.fetch_messages(sub[0], worker.concurrency)
 
     assert len(msgs) == 1
     msg = msgs[0]
@@ -258,7 +259,7 @@ async def test_worker_process_task_with_timeout(get_nc):
     assert job_data["meta"]["retry_count"] == 0
 
     await worker._process_task(msg)
-    msgs = await worker.fetch_messages(sub[0])
+    msgs = await worker.fetch_messages(sub[0], worker.concurrency)
     assert len(msgs) == 1
     msg = msgs[0]
 
@@ -277,7 +278,7 @@ async def test_worker_get_subscriptions(get_nc):
         nc,
         topic_name="my_queue",
         concurrency=3,
-        rate_limit={"max": 5, "duration": 30},
+        rate_limit=(5, 30),
         processor_callback=process_job,
         priorities=queue.priorities,
     )
@@ -308,7 +309,7 @@ async def test_worker_fetch_retry(get_nc):
         nc,
         topic_name="my_queue",
         concurrency=3,
-        rate_limit={"max": 5, "duration": 5000},
+        rate_limit=(5, 5000),
         processor_callback=process_job,
         priorities=queue.priorities,
     )
@@ -332,7 +333,7 @@ async def test_worker_fetch_retry(get_nc):
     filter_subject = info.config.filter_subject
     assert filter_subject == "my_queue.*.1"
 
-    msgs = await worker.fetch_messages(sub[0])
+    msgs = await worker.fetch_messages(sub[0], worker.concurrency)
     messages_worker1_len = len(msgs)
     assert messages_worker1_len == 3
 
@@ -348,7 +349,7 @@ async def test_worker_fetch_retry(get_nc):
     filter_subject = info.config.filter_subject
     assert filter_subject == "my_queue.*.1"
 
-    msgs = await worker2.fetch_messages(sub2[0])
+    msgs = await worker2.fetch_messages(sub2[0], worker.concurrency)
     messages_worker2_len = len(msgs)
     assert messages_worker2_len == 2
 
@@ -358,10 +359,10 @@ async def test_worker_fetch_retry(get_nc):
     task_ack = [msg.ack() for msg in msgs]
     asyncio.gather(*task_ack)
 
-    messages_len = await worker.fetch_messages(sub[0])
+    messages_len = await worker.fetch_messages(sub[0], worker.concurrency)
     assert messages_len is None
 
-    messages_len2 = await worker2.fetch_messages(sub2[0])
+    messages_len2 = await worker2.fetch_messages(sub2[0], worker.concurrency)
     assert messages_len2 is None
 
 
@@ -375,7 +376,7 @@ async def test_worker_planned_time(get_nc, job_delay):
         nc,
         topic_name="my_queue",
         concurrency=3,
-        rate_limit={"max": 5, "duration": 5000},
+        rate_limit=(5, 5000),
         processor_callback=process_job,
     )
 
@@ -384,7 +385,7 @@ async def test_worker_planned_time(get_nc, job_delay):
 
     await queue.addJob(job_delay)
 
-    msgs = await worker.fetch_messages(sub[0])
+    msgs = await worker.fetch_messages(sub[0], worker.concurrency)
     assert len(msgs) == 1
 
     msg = msgs[0]
@@ -395,7 +396,7 @@ async def test_worker_planned_time(get_nc, job_delay):
     await worker._process_task(msg)
     await asyncio.sleep(15)
 
-    msgs = await worker.fetch_messages(sub[0])
+    msgs = await worker.fetch_messages(sub[0], worker.concurrency)
     assert len(msgs) == 1
 
     msg = msgs[0]
@@ -406,18 +407,19 @@ async def test_worker_planned_time(get_nc, job_delay):
 
 
 @pytest.mark.asyncio
-async def test_worker_start(get_nc, job_delay):
+async def test_worker_filter_sub(get_nc):
     nc = get_nc
     queue = Queue(nc, topic_name="my_queue")
     await queue.connect()
 
-    await queue.addJob(job_delay)
+    job = Job(queue_name="my_queue", name="task_1", data={"key": "value"}, timeout=15)
+    await queue.addJob(job)
 
     worker = Worker(
         nc,
         topic_name="my_queue",
         concurrency=3,
-        rate_limit={"max": 5, "duration": 5000},
+        rate_limit=(5, 5000),
         processor_callback=process_job,
     )
 
