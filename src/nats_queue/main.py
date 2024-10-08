@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 import logging
 import nats
 from nats.aio.client import Client
+from nats.js.api import StreamConfig
 import asyncio
 import uuid
 import json
@@ -68,6 +69,14 @@ class Queue:
         except Exception as e:
             logger.error(f"Ошибка подключения к NATS: {e}")
             raise
+
+    async def update_stream(self, conf: StreamConfig):
+        logger.info("Обновление стрима")
+        try:
+            await self.js.update_stream(conf)
+            logger.info("Обновление стрима завершено")
+        except Exception as e:
+            logger.error(f"Ошибка при обновлении стрима: {e}")
 
     async def close(self):
         if self.nc:
