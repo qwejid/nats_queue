@@ -36,13 +36,16 @@ jobs:
           cache: true
       
       - name: Start nats-server
-       run: nats-server -js &
+        run: nats-server -js &
+
+      - name: Wait for nats-server to start
+        run: sleep 10
 
       - name: Run Flake8
         run: flake8
       
       - name: Run Tests
-        run: python -m pytest --cov --cov-report=xml src/test/
+        run: python -m pytest --cov=src/nats_queue --cov-report=xml src/test/
       
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
@@ -51,4 +54,3 @@ jobs:
           file: ./coverage/lcov.info
           os: linux
           token: ${{ secrets.CODECOV_TOKEN }}
-      
