@@ -42,10 +42,10 @@ jobs:
         run: sleep 10
 
       - name: Run Flake8
-        run: flake8
+        run: poetry run flake8
       
       - name: Run Tests
-        run: python -m pytest --cov=src/nats_queue --cov-report=xml src/test/
+        run: poetry run python -m pytest --cov=src/nats_queue --cov-report=xml src/test/
       
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
