@@ -37,6 +37,7 @@ async def test_rate_limiter_check_limit_no_wait():
     limiter = RateLimiter(max_tasks, duration, concurence)
 
     limiter.increment(1)
+    assert limiter.processed_count == 1
 
     start_time = int(time.time() * 1000)
     await limiter.check_limit(1)
@@ -56,10 +57,13 @@ async def test_rate_limiter_check_limit_with_wait():
     for _ in range(max_tasks):
         limiter.increment(1)
 
+    assert limiter.processed_count == 2
+
     start_time = int(time.time() * 1000)
     await limiter.check_limit(1)
     end_time = int(time.time() * 1000)
 
+    assert limiter.processed_count == 0
     assert end_time - start_time >= duration
     assert limiter.processed_count == 0
 

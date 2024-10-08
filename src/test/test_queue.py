@@ -9,7 +9,7 @@ import nats
 
 @pytest_asyncio.fixture
 async def get_nc():
-    nc = await nats.connect(servers=["nats://localhost:4222"])
+    nc = await nats.connect()
     yield nc
 
     js = nc.jetstream()

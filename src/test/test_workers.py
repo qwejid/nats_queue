@@ -504,7 +504,7 @@ async def test_worker_start_one_worker(get_nc):
     assert stream == queue.topic_name
 
     worker_count = stream_info[0].state.consumer_count
-    assert worker_count == 2
+    assert worker_count == 1
 
     worker_info = await worker.js.consumers_info(stream)
     assert len(worker_info) == 1
@@ -563,6 +563,7 @@ async def test_worker_start_many_worker_with_one_durable(get_nc):
         "my_queue.*.*",
         "my_queue_2.*.*",
     ]
+
     stream = stream_info[0].config.name
     assert stream == queue.topic_name
     worker_count = 0
@@ -570,17 +571,19 @@ async def test_worker_start_many_worker_with_one_durable(get_nc):
         worker_count += stream.state.consumer_count
     assert worker_count == 2
 
-    worker_info = await worker.js.consumers_info(queue.topic_name)
-    assert len(worker_info) == 1
+    worker_info1 = await worker.js.consumers_info(queue.topic_name)
+    assert len(worker_info1) == 1
 
-    worker_name = worker_info[0].name
-    assert worker_name == "worker_group_1"
+    worker_name1 = worker_info1[0].name
+    assert worker_name1 == "worker_group_1"
 
-    worker2_info = await worker2.js.consumers_info(queue2.topic_name)
-    assert len(worker2_info) == 1
+    worker2_info2 = await worker2.js.consumers_info(queue2.topic_name)
+    assert len(worker2_info2) == 1
 
-    worker_name = worker2_info[0].name
-    assert worker_name == "worker_group_1"
+    worker_name2 = worker2_info2[0].name
+    assert worker_name2 == "worker_group_1"
+
+    assert worker_info1[0] != worker2_info2[0]
 
 
 async def process_job(job_data):
