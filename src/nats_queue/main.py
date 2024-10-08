@@ -111,7 +111,8 @@ class RateLimiter:
         logger.debug(f"Увеличение счетчика обработанных задач: {self.processed_count}.")
 
     async def check_limit(self, active_tasks):
-        elapsed = self.start_time - self.start_time % self.duration
+        current_time = int(time.time() * 1000)
+        elapsed = current_time - self.start_time
 
         if elapsed < self.duration and self.processed_count >= self.max_tasks:
             await self._wait_for_limit(elapsed)
@@ -133,6 +134,7 @@ class RateLimiter:
         self._reset_limit()
 
     def _reset_limit(self):
+        self.start_time = int(time.time() * 1000)
         self.processed_count = 0
         logger.debug(
             "Состояние сброшено: start_time обновлен, processed_count сброшен."
