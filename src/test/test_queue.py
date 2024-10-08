@@ -1,4 +1,3 @@
-import os
 import pytest
 import pytest_asyncio
 import json
@@ -7,15 +6,10 @@ from nats.aio.client import Client as NATS
 from nats.js.client import JetStreamContext as JetStream
 import nats
 
-user = os.environ.get("NATS_USER")
-password = os.environ.get("NATS_PASSWORD")
-
 
 @pytest_asyncio.fixture
 async def get_nc():
-    nc = await nats.connect(
-        servers=["nats://localhost:4222"], user=user, password=password
-    )
+    nc = await nats.connect(servers=["nats://localhost:4222"])
     yield nc
 
     js = nc.jetstream()
@@ -53,9 +47,7 @@ async def test_queue_connect_success(get_nc):
 @pytest.mark.asyncio
 async def test_queue_close_success():
     topic_name = "test_topic"
-    nc = await nats.connect(
-        servers=["nats://localhost:4222"], user=user, password=password
-    )
+    nc = await nats.connect(servers=["nats://localhost:4222"])
     queue = Queue(nc, topic_name=topic_name)
 
     await queue.connect()

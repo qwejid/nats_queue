@@ -77,4 +77,3 @@ async def test_rate_limiter_reset():
     await limiter.check_limit(1)
 
     assert limiter.processed_count == 0
-    assert limiter.start_time > int(time.time() * 1000) - duration

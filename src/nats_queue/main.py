@@ -96,25 +96,29 @@ class Queue:
 
 
 class RateLimiter:
-    def __init__(self, max_tasks, duration):
+    def __init__(self, max_tasks, duration, concurence):
         self.max_tasks = max_tasks
         self.duration = duration
         self.processed_count = 0
+        self.concurence = concurence
         self.start_time = int(time.time() * 1000)
         logger.debug(
             f"RateLimiter создан с max_tasks={max_tasks}, duration={duration}."
         )
 
-    def increment(self):
-        self.processed_count += 1
+    def increment(self, count):
+        self.processed_count += count
         logger.debug(f"Увеличение счетчика обработанных задач: {self.processed_count}.")
 
-    async def check_limit(self):
-        current_time = int(time.time() * 1000)
-        elapsed = current_time - self.start_time
+    async def check_limit(self, active_tasks):
+        elapsed = self.start_time - self.start_time % self.duration
 
         if elapsed < self.duration and self.processed_count >= self.max_tasks:
             await self._wait_for_limit(elapsed)
+        elif elapsed < self.duration and self.processed_count < self.max_tasks:
+            free_slot = self.concurence - active_tasks
+            if free_slot != 0:
+                return free_slot
         elif elapsed > self.duration:
             logger.info(
                 f"""Превышено время ожидания лимита обработки.
@@ -129,7 +133,6 @@ class RateLimiter:
         self._reset_limit()
 
     def _reset_limit(self):
-        self.start_time = int(time.time() * 1000)
         self.processed_count = 0
         logger.debug(
             "Состояние сброшено: start_time обновлен, processed_count сброшен."
@@ -142,8 +145,9 @@ class Worker:
         connection: Client,
         topic_name: str,
         concurrency: int,
-        rate_limit: dict,
         processor_callback,
+        rate_limit: tuple,
+        timeout_fetch: int = 5,
         priorities: int = 1,
         max_retries: int = 3,
     ):
@@ -156,6 +160,7 @@ class Worker:
         self.js = None
         self.max_retries = max_retries
         self.active_tasks = 0
+        self.timeout_fetch = timeout_fetch
 
     async def connect(self):
         logger.info("Подключение воркера к NATS...")
@@ -184,7 +189,6 @@ class Worker:
                     f"""Время для задачи {job_data['name']} еще не наступило.
                     Повторная отправка через {delay}."""
                 )
-                self.active_tasks -= 1
                 await msg.nak(delay=delay)
                 logger.info(f"Задача {job_data['name']} была повторно отправленна")
                 return
@@ -192,40 +196,29 @@ class Worker:
             logger.info(f"Обработка задачи {job_data['name']}")
 
             if job_data.get("meta").get("retry_count") > self.max_retries:
-                raise ValueError(
+                logger.error(
                     f"Максимальное количество попыток {job_data['name']} превышено."
                 )
+                await msg.term()
+                return
 
             timeout = job_data["meta"]["timeout"]
             await asyncio.wait_for(self.processor_callback(job_data), timeout=timeout)
 
-            await msg.ack()
+            await msg.ack_sync()
             logger.info(f"Задача {job_data['name']} успешно обработана.")
-        except ValueError as e:
-            logger.error(e)
-            await msg.term()
-        except asyncio.TimeoutError as e:
-            logger.error(
-                f"Ошибка при обработке задачи {job_data['name']} истек timeout: {e}",
-                exc_info=True,
-            )
-            job_data["meta"]["retry_count"] += 1
-            job = Job(
-                queue_name=job_data["queue_name"],
-                name=job_data["name"],
-                data=job_data["data"],
-                meta=job_data["meta"],
-            )
-            job_bytes = json.dumps(job.to_dict()).encode()
-            await msg.term()
-            await self.js.publish(
-                msg.subject, job_bytes, headers={"Nats-Msg-Id": job.id}
-            )
+
         except Exception as e:
-            logger.error(
-                f"Ошибка при обработке задачи {job_data['name']}: {e}",
-                exc_info=True,
-            )
+            if isinstance(e, asyncio.TimeoutError):
+                logger.error(
+                    f"Ошибка при обработке {job_data['name']} истек timeout: {e}",
+                    exc_info=True,
+                )
+            else:
+                logger.error(
+                    f"Ошибка при обработке задачи {job_data['name']}: {e}",
+                    exc_info=True,
+                )
             job_data["meta"]["retry_count"] += 1
             job = Job(
                 queue_name=job_data["queue_name"],
@@ -241,9 +234,9 @@ class Worker:
         finally:
             self.active_tasks -= 1
 
-    async def fetch_messages(self, sub):
+    async def fetch_messages(self, sub, count):
         try:
-            msgs = await sub.fetch(self.concurrency, timeout=10)
+            msgs = await sub.fetch(count, timeout=self.timeout_fetch)
             logger.info(f"Получено {len(msgs)}")
             return msgs
         except nats.errors.TimeoutError:
@@ -269,13 +262,16 @@ class Worker:
     async def start(self):
         subscriptions = await self.get_subscriptions()
 
-        limiter = RateLimiter(self.rate_limit["max"], self.rate_limit["duration"])
+        limiter = RateLimiter(self.rate_limit[0], self.rate_limit[1], self.concurrency)
 
         while True:
             messages_fetched = False
 
             for sub in subscriptions:
-                msgs = await self.fetch_messages(sub)
+                free_slot = await limiter.check_limit(self.active_tasks)
+                fetch_count = free_slot if free_slot else self.concurrency
+
+                msgs = await self.fetch_messages(sub, fetch_count)
 
                 if msgs:
                     messages_fetched = True
@@ -286,16 +282,8 @@ class Worker:
                     logger.info("Нет сообщений для обработки, идем в следующий поток")
 
             if messages_fetched:
-                while msgs:
-                    await limiter.check_limit()
-                    if self.active_tasks == self.concurrency:
-                        logger.info("Concurrency достиг лимита, ожидаем...")
-                        await asyncio.sleep(10)
-                        continue
-                    job = msgs.pop(0)
-                    asyncio.create_task(self._process_task(job))
-                    limiter.increment()
-                else:
-                    logger.info(
-                        "Нет сообщений для обработки в данном потоке смотрим опять"
-                    )
+
+                tasks = [self._process_task(job) for job in msgs]
+                asyncio.gather(*tasks)
+                limiter.increment(len(tasks))
+                await asyncio.sleep(10)

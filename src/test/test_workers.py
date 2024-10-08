@@ -6,17 +6,11 @@ from nats_queue.main import Worker, Job, Queue
 from nats.aio.client import Client as NATS
 from nats.js.client import JetStreamContext as JetStream
 import nats
-import os
-
-user = os.environ.get("NATS_USER")
-password = os.environ.get("NATS_PASSWORD")
 
 
 @pytest_asyncio.fixture
 async def get_nc():
-    nc = await nats.connect(
-        servers=["nats://localhost:4222"], user=user, password=password
-    )
+    nc = await nats.connect(servers=["nats://localhost:4222"])
     yield nc
 
     js = nc.jetstream()
@@ -89,9 +83,7 @@ async def test_worker_connect_faild():
 
 @pytest.mark.asyncio
 async def test_worker_connect_close_success():
-    nc = await nats.connect(
-        servers=["nats://localhost:4222"], user=user, password=password
-    )
+    nc = await nats.connect(servers=["nats://localhost:4222"])
     worker = Worker(
         nc,
         topic_name="my_queue",
@@ -367,6 +359,83 @@ async def test_worker_fetch_retry(get_nc):
 
 
 @pytest.mark.asyncio
+async def test_two_worker_fetch(get_nc):
+    nc = get_nc
+    queue = Queue(nc, topic_name="my_queue", priorities=3)
+    await queue.connect()
+
+    jobs = [
+        Job(queue_name="my_queue", name=f"task_{i}", data={"key": f"value_{i}"})
+        for i in range(1, 6)
+    ]
+    await queue.addJobs(jobs, 1)
+
+    worker = Worker(
+        nc,
+        topic_name="my_queue",
+        concurrency=3,
+        rate_limit=(5, 5000),
+        processor_callback=process_job,
+        priorities=queue.priorities,
+    )
+
+    worker2 = Worker(
+        nc,
+        topic_name="my_queue",
+        concurrency=4,
+        rate_limit={"max": 5, "duration": 5000},
+        processor_callback=process_job,
+        priorities=queue.priorities,
+    )
+
+    await worker.connect()
+    await worker2.connect()
+
+    sub = await worker.get_subscriptions()
+    sub2 = await worker2.get_subscriptions()
+
+    info1 = await sub[0].consumer_info()
+
+    filter_subject1 = info1.config.filter_subject
+    assert filter_subject1 == "my_queue.*.1"
+
+    msgs1 = await worker.fetch_messages(sub[0], worker.concurrency)
+
+    messages_worker1_len = len(msgs1)
+    assert messages_worker1_len == 3
+
+    task_name1 = [msg.subject for msg in msgs1]
+    assert task_name1 == [
+        "my_queue.task_1.1",
+        "my_queue.task_2.1",
+        "my_queue.task_3.1",
+    ]
+    task_ack1 = [msg.ack_sync() for msg in msgs1]
+
+    info2 = await sub2[0].consumer_info()
+    filter_subject2 = info2.config.filter_subject
+    assert filter_subject2 == "my_queue.*.1"
+
+    msgs2 = await worker2.fetch_messages(sub2[0], worker.concurrency)
+    messages_worker2_len = len(msgs2)
+    assert messages_worker2_len == 2
+
+    task_name2 = [msg.subject for msg in msgs2]
+    assert task_name2 == ["my_queue.task_4.1", "my_queue.task_5.1"]
+
+    task_ack2 = [msg.ack_sync() for msg in msgs2]
+
+    asyncio.gather(*task_ack1)
+    asyncio.gather(*task_ack2)
+
+    messages_len = await worker.fetch_messages(sub[0], worker.concurrency)
+    assert messages_len is None
+
+    messages_len2 = await worker2.fetch_messages(sub2[0], worker.concurrency)
+    assert messages_len2 is None
+
+
+@pytest.mark.asyncio
 async def test_worker_planned_time(get_nc, job_delay):
     nc = get_nc
     queue = Queue(nc, topic_name="my_queue")
@@ -394,6 +463,7 @@ async def test_worker_planned_time(get_nc, job_delay):
     assert job_data["meta"]["retry_count"] == 0
 
     await worker._process_task(msg)
+    assert worker.active_tasks == 0
     await asyncio.sleep(15)
 
     msgs = await worker.fetch_messages(sub[0], worker.concurrency)
@@ -407,23 +477,110 @@ async def test_worker_planned_time(get_nc, job_delay):
 
 
 @pytest.mark.asyncio
-async def test_worker_filter_sub(get_nc):
+async def test_worker_start_one_worker(get_nc):
     nc = get_nc
+
     queue = Queue(nc, topic_name="my_queue")
     await queue.connect()
 
-    job = Job(queue_name="my_queue", name="task_1", data={"key": "value"}, timeout=15)
+    job = Job(queue_name="my_queue", name="task_1", data={"key": "value"}, timeout=1)
     await queue.addJob(job)
 
     worker = Worker(
         nc,
         topic_name="my_queue",
         concurrency=3,
-        rate_limit=(5, 5000),
+        rate_limit=(5, 2000),
+        processor_callback=process_job,
+    )
+    await worker.connect()
+    worker_task = asyncio.create_task(worker.start())
+    await asyncio.sleep(2)
+    worker_task.cancel()
+    stream_info = await worker.js.streams_info()
+    assert len(stream_info) == 1
+    assert stream_info[0].config.subjects == ["my_queue.*.*"]
+    stream = stream_info[0].config.name
+    assert stream == queue.topic_name
+
+    worker_count = stream_info[0].state.consumer_count
+    assert worker_count == 2
+
+    worker_info = await worker.js.consumers_info(stream)
+    assert len(worker_info) == 1
+
+    worker_name = worker_info[0].name
+    assert worker_name == "worker_group_1"
+
+
+@pytest.mark.asyncio
+async def test_worker_start_many_worker_with_one_durable(get_nc):
+    nc = get_nc
+
+    queue = Queue(nc, topic_name="my_queue")
+    await queue.connect()
+    queue2 = Queue(nc, topic_name="my_queue_2")
+    await queue.connect()
+    await queue2.connect()
+
+    job = Job(queue_name="my_queue", name="task_1", data={"key": "value"}, timeout=1)
+    job2 = Job(queue_name="my_queue_2", name="task_1", data={"key": "value"}, timeout=1)
+    await queue.addJob(job)
+    await queue.addJob(job2)
+
+    worker = Worker(
+        nc,
+        topic_name="my_queue",
+        concurrency=3,
+        rate_limit=(5, 2000),
         processor_callback=process_job,
     )
 
-    worker.start()
+    worker2 = Worker(
+        nc,
+        topic_name="my_queue_2",
+        concurrency=3,
+        rate_limit=(5, 2000),
+        processor_callback=process_job,
+    )
+    await worker.connect()
+    await worker2.connect()
+
+    worker_task = asyncio.create_task(worker.start())
+    worker2_task = asyncio.create_task(worker2.start())
+
+    await asyncio.sleep(2)
+
+    worker_task.cancel()
+    worker2_task.cancel()
+
+    stream_info = await worker.js.streams_info()
+    assert len(stream_info) == 2
+    stream_name = []
+    for stream in stream_info:
+        stream_name.extend(stream.config.subjects)
+    assert stream_name == [
+        "my_queue.*.*",
+        "my_queue_2.*.*",
+    ]
+    stream = stream_info[0].config.name
+    assert stream == queue.topic_name
+    worker_count = 0
+    for stream in stream_info:
+        worker_count += stream.state.consumer_count
+    assert worker_count == 2
+
+    worker_info = await worker.js.consumers_info(queue.topic_name)
+    assert len(worker_info) == 1
+
+    worker_name = worker_info[0].name
+    assert worker_name == "worker_group_1"
+
+    worker2_info = await worker2.js.consumers_info(queue2.topic_name)
+    assert len(worker2_info) == 1
+
+    worker_name = worker2_info[0].name
+    assert worker_name == "worker_group_1"
 
 
 async def process_job(job_data):
