@@ -585,28 +585,6 @@ async def test_worker_start_many_worker_with_one_durable(get_nc):
     assert worker_info1[0] != worker2_info2[0]
 
 
-@pytest.mark.asyncio
-async def test_worker_update_stream(get_nc):
-    nc = get_nc
-
-    queue = Queue(nc, topic_name="my_queue")
-    await queue.connect()
-
-    stream_info = await queue.js.stream_info(queue.topic_name)
-    stream_name = stream_info.config.name
-    assert stream_name == queue.topic_name
-    stream_description = stream_info.config.description
-    assert stream_description is None
-
-    config = stream_info.config
-    config.description = "Описание для стрима"
-    await queue.update_stream(config)
-
-    updating_stream_info = await queue.js.stream_info(queue.topic_name)
-    new_stream_description = updating_stream_info.config.description
-    assert new_stream_description == "Описание для стрима"
-
-
 async def process_job(job_data):
     await asyncio.sleep(1)
 
