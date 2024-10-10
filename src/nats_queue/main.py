@@ -86,14 +86,6 @@ class Queue:
             logger.error(f"Ошибка подключения к NATS: {e}")
             raise
 
-    async def update_stream(self, conf: StreamConfig):
-        logger.info("Обновление стрима")
-        try:
-            await self.js.update_stream(conf)
-            logger.info("Обновление стрима завершено")
-        except Exception as e:
-            logger.error(f"Ошибка при обновлении стрима: {e}")
-
     async def close(self):
         if self.nc:
             logger.info("Закрытие соединения с NATS...")
