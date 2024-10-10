@@ -147,3 +147,26 @@ async def test_connect_raises_exception():
 
     with pytest.raises(Exception):
         await queue.connect()
+
+
+@pytest.mark.asyncio
+async def test_create_stream_with_diff_conf(get_nc):
+    nc = get_nc
+
+    queue = Queue(nc, topic_name="my_queue", duplicate_window=1)
+    await queue.connect()
+
+    stream = await queue.js.stream_info(queue.topic_name)
+    name = stream.config.name
+    duplicate_window = stream.config.duplicate_window
+    assert name == "my_queue"
+    assert duplicate_window == queue.duplicate_window
+
+    queue2 = Queue(nc, topic_name="my_queue", duplicate_window=3)
+    await queue2.connect()
+
+    stream = await queue.js.stream_info(queue.topic_name)
+    name = stream.config.name
+    duplicate_window = stream.config.duplicate_window
+    assert name == "my_queue"
+    assert duplicate_window == queue2.duplicate_window
