@@ -3,6 +3,7 @@ import logging
 import nats
 from nats.aio.client import Client
 from nats.js.api import StreamConfig
+from nats.js.errors import BadRequestError
 import asyncio
 import uuid
 import json
@@ -52,11 +53,18 @@ class Job:
 
 
 class Queue:
-    def __init__(self, connection: Client, topic_name: str, priorities: int = 1):
+    def __init__(
+        self,
+        connection: Client,
+        topic_name: str,
+        priorities: int = 1,
+        duplicate_window: int = 0,
+    ):
         self.topic_name = topic_name
         self.priorities = priorities
         self.nc = connection
         self.js = None
+        self.duplicate_window = duplicate_window
 
     async def connect(self):
         logger.info("Подключение к JetStream...")
@@ -65,7 +73,15 @@ class Queue:
             logger.info("Успешно подключено к JetStream")
 
             subjects = [f"{self.topic_name}.*.*"]
-            await self.js.add_stream(name=self.topic_name, subjects=subjects)
+            await self.js.add_stream(
+                name=self.topic_name,
+                subjects=subjects,
+                duplicate_window=self.duplicate_window,
+            )
+        except BadRequestError:
+            await self.js.update_stream(
+                name=self.topic_name, duplicate_window=self.duplicate_window
+            )
         except Exception as e:
             logger.error(f"Ошибка подключения к NATS: {e}")
             raise
@@ -214,7 +230,9 @@ class Worker:
                 return
 
             timeout = job_data["meta"]["timeout"]
-            await asyncio.wait_for(self.processor_callback(job_data), timeout=timeout)
+            await asyncio.wait_for(
+                self.processor_callback(job_data["data"]), timeout=timeout
+            )
 
             await msg.ack_sync()
             logger.info(f"Задача {job_data['name']} успешно обработана.")
