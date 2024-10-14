@@ -2,7 +2,6 @@ from datetime import datetime, timedelta
 import logging
 import nats
 from nats.aio.client import Client
-from nats.js.api import StreamConfig
 from nats.js.errors import BadRequestError
 import asyncio
 import uuid
@@ -58,7 +57,7 @@ class Queue:
         connection: Client,
         topic_name: str,
         priorities: int = 1,
-        duplicate_window: int = 0,
+        duplicate_window: int = 2000,
     ):
         self.topic_name = topic_name
         self.priorities = priorities
