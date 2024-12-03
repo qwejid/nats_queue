@@ -36,16 +36,14 @@ class FixedWindowLimiter:
         :return: Время ожидания в секундах.
         """
         now = int(time.time() * 1000)
-        window_start = now - (now % self.duration)
 
-        if window_start != self.timestamp:
+        if now >= self.timestamp + self.duration:
+            self.timestamp = now - (now % self.duration)
             self.count = 0
-            self.timestamp = window_start
+            logger.info(f"Новое окно началось: {self.timestamp}")
 
         if self.count >= self.max_tasks:
-            self.count = 0
-            self.timestamp = window_start + self.duration
-            wait_time = max(self.timestamp - now, self.interval) / 1000
+            wait_time = (self.timestamp + self.duration - now) / 1000
             logger.info(f"Лимит задач превышен. Ожидание {wait_time:.2f} секунд.")
             return wait_time
 
