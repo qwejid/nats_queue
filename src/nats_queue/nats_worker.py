@@ -1,160 +1,13 @@
-from datetime import datetime, timedelta
-import logging
-import nats
-from nats.aio.client import Client
-from nats.js.errors import BadRequestError
 import asyncio
-import uuid
+from datetime import datetime
 import json
-import time
-from dotenv import load_dotenv
-
-load_dotenv()
-
-logging.basicConfig(
-    format="%(asctime)s - %(levelname)s - %(message)s", level=logging.DEBUG
-)
+import logging
+from nats_queue.nats_limiter import RateLimiter
+from nats.aio.client import Client
+from nats_queue.nats_job import Job
+from nats.errors import TimeoutError
 
 logger = logging.getLogger("nats")
-
-
-class Job:
-    def __init__(self, queue_name, name, data, timeout=None, delay=0, meta=None):
-        if not queue_name or not name:
-            raise ValueError("queue_name and name cannot be empty")
-
-        self.id = str(uuid.uuid4())
-        self.queue_name = queue_name
-        self.name = name
-        self.data = data
-        self.delay = delay
-        self.timeout = timeout
-        self.meta = meta or {
-            "retry_count": 0,
-            "start_time": (
-                datetime.now() + timedelta(milliseconds=self.delay)
-            ).isoformat(),
-            "timeout": self.timeout,
-        }
-
-    @property
-    def subject(self):
-        return f"{self.queue_name}.{self.name}"
-
-    def to_dict(self):
-        return {
-            "id": self.id,
-            "queue_name": self.queue_name,
-            "name": self.name,
-            "data": self.data,
-            "meta": self.meta,
-        }
-
-
-class Queue:
-    def __init__(
-        self,
-        connection: Client,
-        topic_name: str,
-        priorities: int = 1,
-        duplicate_window: int = 2000,
-    ):
-        self.topic_name = topic_name
-        self.priorities = priorities
-        self.nc = connection
-        self.js = None
-        self.duplicate_window = duplicate_window
-
-    async def connect(self):
-        logger.info("Подключение к JetStream...")
-        try:
-            self.js = self.nc.jetstream()
-            logger.info("Успешно подключено к JetStream")
-
-            subjects = [f"{self.topic_name}.*.*"]
-            await self.js.add_stream(
-                name=self.topic_name,
-                subjects=subjects,
-                duplicate_window=self.duplicate_window,
-            )
-        except BadRequestError:
-            await self.js.update_stream(
-                name=self.topic_name, duplicate_window=self.duplicate_window
-            )
-        except Exception as e:
-            logger.error(f"Ошибка подключения к NATS: {e}")
-            raise
-
-    async def close(self):
-        if self.nc:
-            logger.info("Закрытие соединения с NATS...")
-            await self.nc.close()
-            logger.info("Соединение закрыто")
-
-    async def addJob(self, job: Job, priority: int = 1):
-        if priority >= self.priorities:
-            priority = self.priorities
-        elif priority == 0:
-            priority = 1
-        logger.info(
-            f"Добавление задачи {job.subject} в очередь с приоритетом {priority}"
-        )
-        job_data = json.dumps(job.to_dict()).encode()
-        await self.js.publish(
-            f"{job.queue_name}.{job.name}.{priority}",
-            job_data,
-            headers={"Nats-Msg-Id": job.id},
-        )
-
-    async def addJobs(self, jobs: list[Job], priority: int = 1):
-        for job in jobs:
-            await self.addJob(job, priority)
-
-
-class RateLimiter:
-    def __init__(self, max_tasks, duration, concurence):
-        self.max_tasks = max_tasks
-        self.duration = duration
-        self.processed_count = 0
-        self.concurence = concurence
-        self.start_time = int(time.time() * 1000)
-        logger.debug(
-            f"RateLimiter создан с max_tasks={max_tasks}, duration={duration}."
-        )
-
-    def increment(self, count):
-        self.processed_count += count
-        logger.debug(f"Увеличение счетчика обработанных задач: {self.processed_count}.")
-
-    async def check_limit(self, active_tasks):
-        current_time = int(time.time() * 1000)
-        elapsed = current_time - self.start_time
-
-        if elapsed < self.duration and self.processed_count >= self.max_tasks:
-            await self._wait_for_limit(elapsed)
-        elif elapsed < self.duration and self.processed_count < self.max_tasks:
-            free_slot = self.concurence - active_tasks
-            if free_slot != 0:
-                return free_slot
-        elif elapsed > self.duration:
-            logger.info(
-                f"""Превышено время ожидания лимита обработки.
-                Обработано {self.processed_count} из {self.max_tasks}."""
-            )
-            self._reset_limit()
-
-    async def _wait_for_limit(self, elapsed):
-        wait_time = (self.duration - elapsed) / 1000
-        logger.info(f"Достижение лимита обработки. Ожидание {wait_time:.2f} мс.")
-        await asyncio.sleep(wait_time)
-        self._reset_limit()
-
-    def _reset_limit(self):
-        self.start_time = int(time.time() * 1000)
-        self.processed_count = 0
-        logger.debug(
-            "Состояние сброшено: start_time обновлен, processed_count сброшен."
-        )
 
 
 class Worker:
@@ -162,9 +15,9 @@ class Worker:
         self,
         connection: Client,
         topic_name: str,
-        concurrency: int,
         processor_callback,
         rate_limit: tuple,
+        concurrency: int = 1,
         timeout_fetch: int = 5,
         priorities: int = 1,
         max_retries: int = 3,
@@ -259,7 +112,7 @@ class Worker:
             msgs = await sub.fetch(count, timeout=self.timeout_fetch)
             logger.info(f"Получено {len(msgs)}")
             return msgs
-        except nats.errors.TimeoutError:
+        except TimeoutError:
             logger.error("Не удалось получить сообщения: истекло время ожидания.")
         except Exception as e:
             logger.error(f"Ошибка получения сообщений: {e}")
