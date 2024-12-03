@@ -2,7 +2,9 @@ import json
 import pytest
 import asyncio
 import pytest_asyncio
-from nats_queue.main import Worker, Job, Queue
+from nats_queue.nats_queue import Queue
+from nats_queue.nats_worker import Worker
+from nats_queue.nats_job import Job
 from nats.aio.client import Client as NATS
 from nats.js.client import JetStreamContext as JetStream
 import nats
@@ -10,7 +12,7 @@ import nats
 
 @pytest_asyncio.fixture
 async def get_nc():
-    nc = await nats.connect(servers=["nats://localhost:4222"])
+    nc = await nats.connect()
     yield nc
 
     js = nc.jetstream()
@@ -83,7 +85,7 @@ async def test_worker_connect_faild():
 
 @pytest.mark.asyncio
 async def test_worker_connect_close_success():
-    nc = await nats.connect(servers=["nats://localhost:4222"])
+    nc = await nats.connect()
     worker = Worker(
         nc,
         topic_name="my_queue",

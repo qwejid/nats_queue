@@ -1,5 +1,5 @@
 import pytest
-from nats_queue.main import Job
+from nats_queue.nats_job import Job
 
 
 def test_job_initialization():

@@ -1,83 +1,87 @@
+import asyncio
 import pytest
 import time
-from nats_queue.main import RateLimiter
+from nats_queue.nats_limiter import RateLimiter
 
 
 @pytest.mark.asyncio
 async def test_rate_limiter_initialization():
     max_tasks = 5
-    duration = 10
-    concurence = 3
-    limiter = RateLimiter(max_tasks, duration, concurence)
+    duration = 1000
+    concurrency = 2
+    interval = 200
+    limiter = RateLimiter(max_tasks, duration, concurrency, interval)
 
-    assert limiter.max_tasks == max_tasks
-    assert limiter.duration == duration
-    assert limiter.processed_count == 0
-    assert limiter.start_time <= int(time.time() * 1000)
+    assert limiter.limiter.max_tasks == max_tasks
+    assert limiter.limiter.duration == duration
+    assert limiter.limiter.count == 0
+    assert limiter.limiter.interval == interval
+    assert limiter.concurrency == concurrency
 
 
 @pytest.mark.asyncio
 async def test_rate_limiter_increment():
     max_tasks = 5
-    duration = 10
-    concurence = 3
-    limiter = RateLimiter(max_tasks, duration, concurence)
+    duration = 1000
+    concurrency = 3
+    interval = 200
+    limiter = RateLimiter(max_tasks, duration, concurrency, interval)
 
-    for _ in range(3):
-        limiter.increment(1)
+    limiter.limiter.inc()
+    limiter.limiter.inc()
+    limiter.limiter.inc()
 
-    assert limiter.processed_count == 3
+    assert limiter.limiter.count == 3
 
 
 @pytest.mark.asyncio
 async def test_rate_limiter_check_limit_no_wait():
     max_tasks = 5
-    duration = 2
-    concurence = 3
-    limiter = RateLimiter(max_tasks, duration, concurence)
+    duration = 1000
+    concurrency = 3
+    interval = 200
+    limiter = RateLimiter(max_tasks, duration, concurrency, interval)
 
-    limiter.increment(1)
-    assert limiter.processed_count == 1
+    limiter.limiter.inc()
+    start_time = time.time()
+    await limiter.check_limit()
+    end_time = time.time()
 
-    start_time = int(time.time() * 1000)
-    await limiter.check_limit(1)
-    end_time = int(time.time() * 1000)
-
-    assert end_time - start_time < 2
-    assert limiter.processed_count == 1
+    assert end_time - start_time < 0.1
+    assert limiter.limiter.count == 1
 
 
 @pytest.mark.asyncio
 async def test_rate_limiter_check_limit_with_wait():
     max_tasks = 2
-    duration = 2
-    concurence = 3
-    limiter = RateLimiter(max_tasks, duration, concurence)
+    duration = 1000
+    concurrency = 1
+    interval = 500
+    limiter = RateLimiter(max_tasks, duration, concurrency, interval)
 
-    for _ in range(max_tasks):
-        limiter.increment(1)
+    limiter.limiter.inc()
+    limiter.limiter.inc()
 
-    assert limiter.processed_count == 2
+    start_time = time.time()
+    await limiter.check_limit()
+    end_time = time.time()
 
-    start_time = int(time.time() * 1000)
-    await limiter.check_limit(1)
-    end_time = int(time.time() * 1000)
-
-    assert limiter.processed_count == 0
-    assert end_time - start_time >= duration
-    assert limiter.processed_count == 0
+    assert end_time - start_time >= interval / 1000
 
 
 @pytest.mark.asyncio
 async def test_rate_limiter_reset():
     max_tasks = 3
-    duration = 1
-    concurence = 3
-    limiter = RateLimiter(max_tasks, duration, concurence)
+    duration = 1000
+    concurrency = 2
+    interval = 200
+    limiter = RateLimiter(max_tasks, duration, concurrency, interval)
 
-    for _ in range(max_tasks):
-        limiter.increment(1)
+    limiter.limiter.inc()
+    limiter.limiter.inc()
+    limiter.limiter.inc()
 
-    await limiter.check_limit(1)
+    await asyncio.sleep(duration / 1000)
+    await limiter.check_limit()
 
-    assert limiter.processed_count == 0
+    assert limiter.limiter.count == 0
