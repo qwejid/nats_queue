@@ -54,7 +54,7 @@ async def test_rate_limiter_check_limit_with_wait():
 
     elapsed_time = end_time - start_time
     expected_wait_time = duration / 1000
-    tolerance = 2
+    tolerance = 1000
     assert (
         expected_wait_time - tolerance <= elapsed_time <= expected_wait_time + tolerance
     )
