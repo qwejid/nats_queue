@@ -562,7 +562,7 @@ async def test_worker_start_many_worker_with_one_durable(get_nc):
     job = Job(queue_name="my_queue", name="task_1", data={"key": "value"}, timeout=1)
     job2 = Job(queue_name="my_queue_2", name="task_1", data={"key": "value"}, timeout=1)
     await queue.addJob(job)
-    await queue.addJob(job2)
+    await queue2.addJob(job2)
 
     worker = Worker(
         nc,
@@ -620,6 +620,32 @@ async def test_worker_start_many_worker_with_one_durable(get_nc):
     assert worker_name2 == "worker_group_1"
 
     assert worker_info1[0] != worker2_info2[0]
+
+
+@pytest.mark.asyncio
+async def test_worker_start(get_nc):
+    nc = get_nc
+    queue = Queue(nc, topic_name="my_queue")
+    await queue.connect()
+
+    job = Job(queue_name="my_queue", name="task_1", data={"key": "value"}, timeout=1)
+    job2 = Job(queue_name="my_queue", name="task_1", data={"key": "value"}, timeout=1)
+    await queue.addJobs([job, job2])
+
+    worker = Worker(
+        nc,
+        topic_name="my_queue",
+        concurrency=3,
+        rate_limit=(5, 2000, 400),
+        processor_callback=process_job,
+    )
+    await worker.connect()
+    worker_task = asyncio.create_task(worker.start())
+    await asyncio.sleep(4)
+
+    worker_task.cancel()
+    stream_info = await worker.js.streams_info()
+    assert len(stream_info) == 1
 
 
 async def process_job(job_data):
