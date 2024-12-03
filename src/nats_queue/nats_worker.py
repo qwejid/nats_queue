@@ -19,6 +19,7 @@ class Worker:
         rate_limit: tuple,
         concurrency: int = 1,
         timeout_fetch: int = 5,
+        interval_fetch: float = 0.15,
         priorities: int = 1,
         max_retries: int = 3,
     ):
@@ -32,6 +33,7 @@ class Worker:
         self.max_retries = max_retries
         self.active_tasks = 0
         self.timeout_fetch = timeout_fetch
+        self.interval_fetch = interval_fetch
 
     async def connect(self):
         logger.info("Подключение воркера к NATS...")
@@ -138,7 +140,10 @@ class Worker:
         subscriptions = await self.get_subscriptions()
 
         limiter = RateLimiter(
-            self.rate_limit[0], self.rate_limit[1], self.concurrency, self.rate_limit[2]
+            self.rate_limit[0],
+            self.rate_limit[1],
+            self.concurrency,
+            self.interval_fetch,
         )
 
         while True:
