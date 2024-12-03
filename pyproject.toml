@@ -11,6 +11,7 @@ nats-py = "^2.9.0"
 pytest-asyncio = "^0.24.0"
 mock = "^5.1.0"
 python-dotenv = "^1.0.1"
+coverage = "^7.6.1"
 
 [tool.poetry.group.dev.dependencies]
 flake8 = "^7.1.1"
