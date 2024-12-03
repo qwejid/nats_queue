@@ -5,7 +5,6 @@ from nats_queue.nats_queue import Queue
 from nats_queue.nats_job import Job
 from nats.aio.client import Client as NATS
 from nats.js.client import JetStreamContext as JetStream
-import nats_queue
 import nats
 
 
