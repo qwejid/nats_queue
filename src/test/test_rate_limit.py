@@ -1,5 +1,4 @@
 import asyncio
-from datetime import timedelta
 import pytest
 import time
 from nats_queue.nats_limiter import RateLimiter
