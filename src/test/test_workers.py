@@ -131,6 +131,23 @@ async def test_worker_fetch_messages_success(get_nc):
 
 
 @pytest.mark.asyncio
+async def test_worker_fetch_messages_error(get_nc):
+    nc = get_nc
+
+    worker = Worker(
+        nc,
+        topic_name="my_queue",
+        concurrency=3,
+        rate_limit=(5, 15000),
+        processor_callback=process_job,
+    )
+    await worker.connect()
+
+    with pytest.raises(Exception):
+        await worker.fetch_messages(None, worker.concurrency)
+
+
+@pytest.mark.asyncio
 async def test_worker_process_task_success(get_nc):
     nc = get_nc
     queue = Queue(nc, topic_name="my_queue")
@@ -285,6 +302,24 @@ async def test_worker_get_subscriptions(get_nc):
         filter_subject = info.config.filter_subject
         worker_name.append(filter_subject)
     assert worker_name == ["my_queue.*.1", "my_queue.*.2", "my_queue.*.3"]
+
+
+@pytest.mark.asyncio
+async def test_worker_get_subscriptions_error(get_nc):
+    nc = get_nc
+
+    worker = Worker(
+        nc,
+        topic_name="my_queue",
+        concurrency=3,
+        rate_limit=(5, 30),
+        processor_callback=process_job,
+        priorities="3",
+    )
+
+    await worker.connect()
+    with pytest.raises(Exception):
+        await worker.get_subscriptions()
 
 
 @pytest.mark.asyncio

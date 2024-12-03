@@ -116,6 +116,7 @@ class Worker:
             logger.error("Не удалось получить сообщения: истекло время ожидания.")
         except Exception as e:
             logger.error(f"Ошибка получения сообщений: {e}")
+            raise
 
     async def get_subscriptions(self):
         subscriptions = []
@@ -130,18 +131,21 @@ class Worker:
 
             except Exception as e:
                 logger.error(f"Ошибка подписки на {topic}: {e}")
+                raise
         return subscriptions
 
     async def start(self):
         subscriptions = await self.get_subscriptions()
 
-        limiter = RateLimiter(self.rate_limit[0], self.rate_limit[1], self.concurrency)
+        limiter = RateLimiter(
+            self.rate_limit[0], self.rate_limit[1], self.concurrency, self.rate_limit[2]
+        )
 
         while True:
             messages_fetched = False
 
             for sub in subscriptions:
-                free_slot = await limiter.check_limit(self.active_tasks)
+                free_slot = await limiter.check_limit()
                 fetch_count = free_slot if free_slot else self.concurrency
 
                 msgs = await self.fetch_messages(sub, fetch_count)
@@ -158,5 +162,5 @@ class Worker:
 
                 tasks = [self._process_task(job) for job in msgs]
                 asyncio.gather(*tasks)
-                limiter.increment(len(tasks))
+                limiter.limiter.inc(len(tasks))
                 await asyncio.sleep(10)
