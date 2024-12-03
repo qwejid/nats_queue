@@ -43,13 +43,13 @@ async def test_worker_initialization(get_nc):
         nc,
         topic_name="my_queue",
         concurrency=3,
-        rate_limit=(5, 15000),
+        rate_limit=(5, 15000, 300),
         processor_callback=process_job,
     )
 
     assert worker.topic_name == "my_queue"
     assert worker.concurrency == 3
-    assert worker.rate_limit == (5, 15000)
+    assert worker.rate_limit == (5, 15000, 300)
     assert worker.max_retries == 3
 
 
@@ -60,7 +60,7 @@ async def test_worker_connect_success(get_nc):
         nc,
         topic_name="my_queue",
         concurrency=3,
-        rate_limit=(5, 30),
+        rate_limit=(5, 30, 6),
         processor_callback=process_job,
     )
 
@@ -76,7 +76,7 @@ async def test_worker_connect_faild():
         "nc",
         topic_name="my_queue",
         concurrency=3,
-        rate_limit=(5, 30),
+        rate_limit=(5, 30, 6),
         processor_callback=process_job,
     )
     with pytest.raises(Exception):
@@ -90,7 +90,7 @@ async def test_worker_connect_close_success():
         nc,
         topic_name="my_queue",
         concurrency=3,
-        rate_limit=(5, 30),
+        rate_limit=(5, 30, 6),
         processor_callback=process_job,
     )
 
@@ -115,7 +115,7 @@ async def test_worker_fetch_messages_success(get_nc):
         nc,
         topic_name="my_queue",
         concurrency=3,
-        rate_limit=(5, 15000),
+        rate_limit=(5, 15000, 3000),
         processor_callback=process_job,
     )
     await worker.connect()
@@ -138,7 +138,7 @@ async def test_worker_fetch_messages_error(get_nc):
         nc,
         topic_name="my_queue",
         concurrency=3,
-        rate_limit=(5, 15000),
+        rate_limit=(5, 15000, 3000),
         processor_callback=process_job,
     )
     await worker.connect()
@@ -164,7 +164,7 @@ async def test_worker_process_task_success(get_nc):
         nc,
         topic_name="my_queue",
         concurrency=3,
-        rate_limit=(5, 15000),
+        rate_limit=(5, 15000, 3000),
         processor_callback=process_job,
         timeout_fetch=5,
     )
@@ -192,7 +192,7 @@ async def test_worker_process_task_with_retry(get_nc):
         nc,
         topic_name="my_queue",
         concurrency=3,
-        rate_limit=(5, 15000),
+        rate_limit=(5, 15000, 3000),
         processor_callback=process_job_with_error,
     )
     await worker.connect()
@@ -226,7 +226,7 @@ async def test_worker_process_task_exceeds_max_retries(get_nc):
         nc,
         topic_name="my_queue",
         concurrency=3,
-        rate_limit=(5, 15000),
+        rate_limit=(5, 15000, 3000),
         processor_callback=process_job,
     )
     await worker.connect()
@@ -255,7 +255,7 @@ async def test_worker_process_task_with_timeout(get_nc):
         nc,
         topic_name="my_queue",
         concurrency=3,
-        rate_limit=(5, 2000),
+        rate_limit=(5, 2000, 400),
         processor_callback=process_job_with_timeout,
     )
     await worker.connect()
@@ -289,7 +289,7 @@ async def test_worker_get_subscriptions(get_nc):
         nc,
         topic_name="my_queue",
         concurrency=3,
-        rate_limit=(5, 30),
+        rate_limit=(5, 30, 6),
         processor_callback=process_job,
         priorities=queue.priorities,
     )
@@ -312,7 +312,7 @@ async def test_worker_get_subscriptions_error(get_nc):
         nc,
         topic_name="my_queue",
         concurrency=3,
-        rate_limit=(5, 30),
+        rate_limit=(5, 30, 6),
         processor_callback=process_job,
         priorities="3",
     )
@@ -338,7 +338,7 @@ async def test_worker_fetch_retry(get_nc):
         nc,
         topic_name="my_queue",
         concurrency=3,
-        rate_limit=(5, 5000),
+        rate_limit=(5, 5000, 1000),
         processor_callback=process_job,
         priorities=queue.priorities,
     )
@@ -347,7 +347,7 @@ async def test_worker_fetch_retry(get_nc):
         nc,
         topic_name="my_queue",
         concurrency=4,
-        rate_limit={"max": 5, "duration": 5000},
+        rate_limit=(5, 5000, 1000),
         processor_callback=process_job,
         priorities=queue.priorities,
     )
@@ -411,7 +411,7 @@ async def test_two_worker_fetch(get_nc):
         nc,
         topic_name="my_queue",
         concurrency=3,
-        rate_limit=(5, 5000),
+        rate_limit=(5, 5000, 1000),
         processor_callback=process_job,
         priorities=queue.priorities,
     )
@@ -420,7 +420,7 @@ async def test_two_worker_fetch(get_nc):
         nc,
         topic_name="my_queue",
         concurrency=4,
-        rate_limit={"max": 5, "duration": 5000},
+        rate_limit=(5, 5000, 1000),
         processor_callback=process_job,
         priorities=queue.priorities,
     )
@@ -482,7 +482,7 @@ async def test_worker_planned_time(get_nc, job_delay):
         nc,
         topic_name="my_queue",
         concurrency=3,
-        rate_limit=(5, 5000),
+        rate_limit=(5, 5000, 1000),
         processor_callback=process_job,
     )
 
@@ -527,7 +527,7 @@ async def test_worker_start_one_worker(get_nc):
         nc,
         topic_name="my_queue",
         concurrency=3,
-        rate_limit=(5, 2000),
+        rate_limit=(5, 2000, 400),
         processor_callback=process_job,
     )
     await worker.connect()
@@ -568,7 +568,7 @@ async def test_worker_start_many_worker_with_one_durable(get_nc):
         nc,
         topic_name="my_queue",
         concurrency=3,
-        rate_limit=(5, 2000),
+        rate_limit=(5, 2000, 400),
         processor_callback=process_job,
     )
 
@@ -576,7 +576,7 @@ async def test_worker_start_many_worker_with_one_durable(get_nc):
         nc,
         topic_name="my_queue_2",
         concurrency=3,
-        rate_limit=(5, 2000),
+        rate_limit=(5, 2000, 400),
         processor_callback=process_job,
     )
     await worker.connect()
