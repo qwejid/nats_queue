@@ -51,11 +51,11 @@ class FixedWindowLimiter:
 
         return self.interval / 1000
 
-    def inc(self) -> None:
+    def inc(self, new_task_count=1) -> None:
         """
         Увеличивает счётчик выполненных задач.
         """
-        self.count += 1
+        self.count += new_task_count
 
     def get(self) -> int:
         """

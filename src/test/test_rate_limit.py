@@ -29,9 +29,9 @@ async def test_rate_limiter_increment():
 
     limiter.limiter.inc()
     limiter.limiter.inc()
-    limiter.limiter.inc()
+    limiter.limiter.inc(2)
 
-    assert limiter.limiter.count == 3
+    assert limiter.limiter.count == 4
 
 
 @pytest.mark.asyncio
