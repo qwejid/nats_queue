@@ -45,7 +45,7 @@ jobs:
         run: poetry run flake8
       
       - name: Run Tests
-        run: poetry run python -m pytest --cov=src/nats_queue --cov-report=xml src/test/
+        run: poetry run python -m pytest --cov=src/nats_queue --cov-report=xml tests/
       
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
