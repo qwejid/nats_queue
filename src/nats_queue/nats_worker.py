@@ -168,4 +168,3 @@ class Worker:
                 tasks = [self._process_task(job) for job in msgs]
                 asyncio.gather(*tasks)
                 limiter.limiter.inc(len(tasks))
-                await asyncio.sleep(10)
