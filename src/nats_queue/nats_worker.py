@@ -8,6 +8,9 @@ from nats_queue.nats_job import Job
 from nats.errors import TimeoutError
 
 logger = logging.getLogger("nats")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
 
 class Worker:
@@ -35,20 +38,25 @@ class Worker:
         self.timeout_fetch = timeout_fetch
         self.interval_fetch = interval_fetch
 
+        logger.info(
+            f"Worker initialized with topic_name={self.topic_name}, "
+            f"concurrency={self.concurrency}, priorities={self.priorities}ms"
+        )
+
     async def connect(self):
-        logger.info("Подключение воркера к NATS...")
+        logger.info("Connecting worker to NATS...")
         try:
             self.js = self.nc.jetstream()
-            logger.info("Воркер успешно подключен к NATS")
+            logger.info("Worker successfully connected to NATS.")
         except Exception as e:
-            logger.error(f"Ошибка подключения воркера к NATS: {e}")
+            logger.error(f"Error while connecting worker to NATS: {e}")
             raise
 
     async def close(self):
         if self.nc:
-            logger.info("Закрытие воркера...")
+            logger.info("Closing worker...")
             await self.nc.close()
-            logger.info("Воркер успешно отключен")
+            logger.info("Worker successfully disconnected.")
 
     async def _process_task(self, msg):
         try:
@@ -59,19 +67,16 @@ class Worker:
                 planned_time = job_start_time - datetime.now()
                 delay = int(planned_time.total_seconds())
                 logger.info(
-                    f"""Время для задачи {job_data['name']} еще не наступило.
-                    Повторная отправка через {delay}."""
+                    f"Job {job_data['name']} is scheduled for later. Requeueing in {delay} seconds."
                 )
                 await msg.nak(delay=delay)
-                logger.info(f"Задача {job_data['name']} была повторно отправленна")
+                logger.info(f"Job {job_data['name']} requeued successfully.")
                 return
 
-            logger.info(f"Обработка задачи {job_data['name']}")
+            logger.info(f"Processing job {job_data['name']}...")
 
             if job_data.get("meta").get("retry_count") > self.max_retries:
-                logger.error(
-                    f"Максимальное количество попыток {job_data['name']} превышено."
-                )
+                logger.error(f"Max retries exceeded for job {job_data['name']}.")
                 await msg.term()
                 return
 
@@ -81,17 +86,17 @@ class Worker:
             )
 
             await msg.ack_sync()
-            logger.info(f"Задача {job_data['name']} успешно обработана.")
+            logger.info(f"Job {job_data['name']} processed successfully.")
 
         except Exception as e:
             if isinstance(e, asyncio.TimeoutError):
                 logger.error(
-                    f"Ошибка при обработке {job_data['name']} истек timeout: {e}",
+                    f"Timeout error while processing job {job_data['name']}: {e}",
                     exc_info=True,
                 )
             else:
                 logger.error(
-                    f"Ошибка при обработке задачи {job_data['name']}: {e}",
+                    f"Error while processing job {job_data['name']}: {e}",
                     exc_info=True,
                 )
             job_data["meta"]["retry_count"] += 1
@@ -112,12 +117,12 @@ class Worker:
     async def fetch_messages(self, sub, count):
         try:
             msgs = await sub.fetch(count, timeout=self.timeout_fetch)
-            logger.info(f"Получено {len(msgs)}")
+            logger.info(f"Fetched {len(msgs)} messages.")
             return msgs
         except TimeoutError:
-            logger.error("Не удалось получить сообщения: истекло время ожидания.")
+            logger.debug("Failed to fetch messages: Timeout occurred.")
         except Exception as e:
-            logger.error(f"Ошибка получения сообщений: {e}")
+            logger.error(f"Error while fetching messages: {e}")
             raise
 
     async def get_subscriptions(self):
@@ -128,11 +133,11 @@ class Worker:
                 sub = await self.js.pull_subscribe(
                     topic, durable=f"worker_group_{priority}"
                 )
-                logger.info(f"Подписка на {topic} успешна: {sub}")
+                logger.info(f"Successfully subscribed to topic {topic}.")
                 subscriptions.append(sub)
 
             except Exception as e:
-                logger.error(f"Ошибка подписки на {topic}: {e}")
+                logger.error(f"Error while subscribing to topic {topic}: {e}")
                 raise
         return subscriptions
 
@@ -161,7 +166,7 @@ class Worker:
                 if messages_fetched:
                     break
                 else:
-                    logger.info("Нет сообщений для обработки, идем в следующий поток")
+                    logger.debug("No messages available, proceeding to the next loop.")
 
             if messages_fetched:
 

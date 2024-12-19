@@ -21,8 +21,10 @@ def test_job_initialization_with_delay():
 
 
 def test_job_initialization_without_queue_name_or_name():
-    with pytest.raises(ValueError, match="queue_name and name cannot be empty"):
-        Job(queue_name="", name="", data={"key": "value"})
+    with pytest.raises(ValueError, match="Parameter 'queue_name' cannot be empty"):
+        Job(queue_name="", name="test", data={"key": "value"})
+    with pytest.raises(ValueError, match="Parameter 'name' cannot be empty"):
+        Job(queue_name="test", name="", data={"key": "value"})
 
 
 def test_job_subject():
