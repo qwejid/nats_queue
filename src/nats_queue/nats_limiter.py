@@ -67,7 +67,8 @@ class FixedWindowLimiter:
         """
         self.count += new_task_count
         logger.debug(
-            f"Task counter incremented by {new_task_count}. Current count: {self.count}."
+            f"Task counter incremented by {new_task_count}. 
+            Current count: {self.count}."
         )
 
     def get(self) -> int:

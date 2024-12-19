@@ -67,7 +67,8 @@ class Worker:
                 planned_time = job_start_time - datetime.now()
                 delay = int(planned_time.total_seconds())
                 logger.info(
-                    f"Job {job_data['name']} is scheduled for later. Requeueing in {delay} seconds."
+                    f"Job {job_data['name']} is scheduled for later. 
+                    Requeueing in {delay} seconds."
                 )
                 await msg.nak(delay=delay)
                 logger.info(f"Job {job_data['name']} requeued successfully.")
