@@ -99,8 +99,8 @@ class Queue:
             raise ValueError("All items in 'jobs' must be instances of Job.")
 
         logger.info(
-            f"Adding {len(jobs)} jobs to queue='{self.topic_name}' 
-            with priority={priority}"
+            f"Adding {len(jobs)} jobs to queue='{self.topic_name}' "
+            f"with priority={priority}"
         )
         for job in jobs:
             await self.addJob(job, priority)
