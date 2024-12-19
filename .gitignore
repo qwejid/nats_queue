@@ -4,3 +4,5 @@
 *.conf
 __pycache__
 .env
+/build
+/src/nats_queue.egg-info
