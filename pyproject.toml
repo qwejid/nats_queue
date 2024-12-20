@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "nats_queue"
-version = "0.1.0"
+version = "1.0.3"
 description = ""
 authors = ["Kristina Shishkina <k.shishkina@darwinsoft.ru>"]
 readme = "README.md"
@@ -12,6 +12,9 @@ pytest-asyncio = "^0.24.0"
 mock = "^5.1.0"
 python-dotenv = "^1.0.1"
 coverage = "^7.6.1"
+setuptools = "^75.6.0"
+wheel = "^0.45.1"
+twine = "^6.0.1"
 
 [tool.poetry.group.dev.dependencies]
 flake8 = "^7.1.1"
