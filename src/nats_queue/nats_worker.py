@@ -107,7 +107,7 @@ class Worker:
                 delay = int(planned_time.total_seconds())
                 await job.nak(delay=delay)
                 logger.debug(
-                    f"""Job: {job_data["name"]} id={job_data["id"]} is scheduled later
+                    f"""Job: {job_data['name']} id={job_data['id']} is scheduled later
                     Requeueing in {delay} seconds"""
                 )
                 return
@@ -115,13 +115,13 @@ class Worker:
             if job_data.get("meta").get("retry_count") > self.max_retries:
                 await job.term()
                 logger.warning(
-                    f"Job: {job_data["name"]} id={job_data["id"]} max retries exceeded"
+                    f"Job: {job_data['name']} id={job_data['id']} max retries exceeded"
                 )
                 return
 
             logger.info(
-                f"""Job: {job_data["name"]} id={job_data["id"]} is started
-                with data={job_data["data"]}) in queue={job_data["queue_name"]}"""
+                f"""Job: {job_data['name']} id={job_data['id']} is started
+                with data={job_data['data']}) in queue={job_data['queue_name']}"""
             )
 
             timeout = job_data["meta"]["timeout"]
@@ -133,7 +133,7 @@ class Worker:
         except Exception as e:
             if isinstance(e, asyncio.TimeoutError):
                 logger.error(
-                    f"Job: {job_data["name"]} id={job_data["id"]} TimeoutError: {e}"
+                    f"Job: {job_data['name']} id={job_data['id']} TimeoutError: {e}"
                 )
             else:
                 logger.error(f"Error while processing job {job_data['id']}: {e}")
