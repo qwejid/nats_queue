@@ -1,90 +1,90 @@
 import logging
+import nats
 from nats.aio.client import Client
 from nats.js.errors import BadRequestError
 import json
 from dotenv import load_dotenv
+from logging import Logger
 
 from nats_queue.nats_job import Job
 
 load_dotenv()
 
-logger = logging.getLogger("nats")
+logger = logging.getLogger("nats_queue")
 logging.basicConfig(
-    format="%(asctime)s - %(levelname)s - %(message)s", level=logging.DEBUG
+    format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO
 )
+
+DEFAULT_DEDUPLICATE_WINDOW = 2000
 
 
 class Queue:
     def __init__(
         self,
-        connection: Client,
-        topic_name: str,
+        client: Client,
+        name: str,
         priorities: int = 1,
-        duplicate_window: int = 2000,
+        duplicate_window: int = DEFAULT_DEDUPLICATE_WINDOW,
+        logger: Logger = logger,
     ):
-        if not topic_name:
-            raise ValueError("Parameter 'topic_name' cannot be empty.")
+        if not name:
+            raise ValueError("Parameter 'name' cannot be empty")
         if priorities <= 0:
-            raise ValueError("Parameter 'priorities' must be greater than 0.")
+            raise ValueError("Parameter 'priorities' must be greater than 0")
 
-        self.topic_name = topic_name
+        self.name = name
         self.priorities = priorities
-        self.nc = connection
-        self.js = None
+        self.client = client
+        self.manager = None
         self.duplicate_window = duplicate_window
 
         logger.info(
-            f"Queue initialized with topic_name={self.topic_name}, "
-            f"priorities={self.priorities}, duplicate_window={self.duplicate_window}ms"
+            f"Queue initialized with name={self.name}, priorities={self.priorities}"
         )
 
-    async def connect(self):
-        logger.info("Connecting to JetStream...")
+    async def setup(self):
         try:
-            self.js = self.nc.jetstream()
-            logger.info("Successfully connected to JetStream")
+            self.manager = self.client.jetstream()
 
-            subjects = [f"{self.topic_name}.*.*"]
-            logger.debug(f"Creating stream with subjects: {subjects}")
-            await self.js.add_stream(
-                name=self.topic_name,
+            subjects = [f"{self.name}.*.*"]
+            await self.manager.add_stream(
+                name=self.name,
                 subjects=subjects,
                 duplicate_window=self.duplicate_window,
             )
-            logger.info(f"Stream '{self.topic_name}' created successfully.")
+            logger.info(f"Stream '{self.name}' created successfully.")
         except BadRequestError:
-            logger.warning(
-                f"Stream '{self.topic_name}' already exists. Attempting to update..."
+            logger.warning(f"Stream '{self.name}' already exists. Attempting to update")
+            await self.manager.update_stream(
+                name=self.name,
+                subjects=subjects,
+                duplicate_window=self.duplicate_window,
             )
-            await self.js.update_stream(
-                name=self.topic_name, duplicate_window=self.duplicate_window
-            )
-            logger.info(f"Stream '{self.topic_name}' updated successfully.")
+            logger.info(f"Stream '{self.name}' updated successfully.")
         except Exception as e:
             logger.error(f"Error connecting to JetStream: {e}", exc_info=True)
             raise
 
     async def close(self):
-        if self.nc:
+        if self.client:
             logger.info("Closing connection to NATS...")
-            await self.nc.close()
+            await self.client.close()
             logger.info("Connection to NATS closed.")
 
     async def addJob(self, job: Job, priority: int = 1):
+        if self.manager is None:
+            raise Exception("Call setup before creating a new job")
         if not isinstance(job, Job):
             raise ValueError("Parameter 'job' must be an instance of Job.")
 
         if priority >= self.priorities:
             priority = self.priorities
-        elif priority == 0:
+        elif priority <= 0:
             priority = 1
-        logger.info(
-            f"Adding job ID={job.id} to queue='{job.queue_name}', "
-            f"subject='{job.subject}' with priority={priority}"
-        )
+
         try:
             job_data = json.dumps(job.to_dict()).encode()
-            await self.js.publish(
+            await self.manager.publish(
                 f"{job.queue_name}.{job.name}.{priority}",
                 job_data,
                 headers={"Nats-Msg-Id": job.id},
@@ -98,10 +98,5 @@ class Queue:
         if not all(isinstance(job, Job) for job in jobs):
             raise ValueError("All items in 'jobs' must be instances of Job.")
 
-        logger.info(
-            f"Adding {len(jobs)} jobs to queue='{self.topic_name}' "
-            f"with priority={priority}"
-        )
         for job in jobs:
             await self.addJob(job, priority)
-        logger.info(f"All {len(jobs)} jobs added successfully.")

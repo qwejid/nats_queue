@@ -1,39 +1,35 @@
 from datetime import datetime, timedelta
-import logging
+import time
 import uuid
-
-logger = logging.getLogger("nats")
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+from typing import Any, Optional, Dict
 
 
 class Job:
-    def __init__(self, queue_name, name, data, timeout=None, delay=0, meta=None):
+    def __init__(
+        self,
+        queue_name: str,
+        name: str,
+        data: Dict[str, Any] = {},
+        timeout=None,
+        delay=0,
+        meta=None,
+    ):
+        for param, param_name in [
+            (queue_name, "queue_name"),
+            (name, "name"),
+        ]:
+            if not param:
+                raise ValueError(f"Parameter '{param_name}' cannot be empty")
 
-        if not queue_name:
-            raise ValueError("Parameter 'queue_name' cannot be empty")
-        if not name:
-            raise ValueError("Parameter 'name' cannot be empty")
-
-        self.id = str(uuid.uuid4())
+        self.id = f"{uuid.uuid4()}_{int(time.time())}"
         self.queue_name = queue_name
         self.name = name
         self.data = data
-        self.delay = delay
-        self.timeout = timeout
         self.meta = meta or {
             "retry_count": 0,
-            "start_time": (
-                datetime.now() + timedelta(milliseconds=self.delay)
-            ).isoformat(),
-            "timeout": self.timeout,
+            "start_time": (datetime.now() + timedelta(seconds=delay)).isoformat(),
+            "timeout": timeout,
         }
-
-        logger.info(
-            f"Created job with ID={self.id}, queue_name={self.queue_name}, "
-            f"name={self.name}, delay={self.delay}ms, timeout={self.timeout}"
-        )
 
     @property
     def subject(self):
