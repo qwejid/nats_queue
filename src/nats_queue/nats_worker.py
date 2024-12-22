@@ -107,8 +107,8 @@ class Worker:
                 delay = int(planned_time.total_seconds())
                 await job.nak(delay=delay)
                 logger.debug(
-                    f"Job: {job_data["name"]} id={job_data["id"]} is scheduled later"
-                    f"Requeueing in {delay} seconds."
+                    f"""Job: {job_data["name"]} id={job_data["id"]} is scheduled later
+                    Requeueing in {delay} seconds"""
                 )
                 return
 
