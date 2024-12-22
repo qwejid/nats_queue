@@ -1,96 +1,92 @@
 import asyncio
 import pytest
 import time
-from nats_queue.nats_limiter import RateLimiter
+from nats_queue.nats_limiter import FixedWindowLimiter, IntervalLimiter
 
 
 @pytest.mark.asyncio
 async def test_rate_limiter_initialization():
     max_tasks = 5
-    duration = 1000
-    concurrency = 2
-    interval = 200
-    limiter = RateLimiter(max_tasks, duration, concurrency, interval)
+    duration = 1
+    interval = 2
+    limiter = FixedWindowLimiter(max_tasks, duration, interval)
+    limiter_interval = IntervalLimiter(interval)
 
-    assert limiter.limiter.max_tasks == max_tasks
-    assert limiter.limiter.duration == duration
-    assert limiter.limiter.count == 0
-    assert limiter.limiter.interval == interval
-    assert limiter.concurrency == concurrency
+    assert limiter.max == max_tasks
+    assert limiter.duration == duration
+    assert limiter.count == 0
+    assert limiter.interval == interval
+
+    assert limiter_interval.interval == interval
 
 
 @pytest.mark.asyncio
 async def test_rate_limiter_increment():
     max_tasks = 5
-    duration = 1000
-    concurrency = 3
-    interval = 200
-    limiter = RateLimiter(max_tasks, duration, concurrency, interval)
+    duration = 1
+    interval = 2
+    limiter = FixedWindowLimiter(max_tasks, duration, interval)
+    limiter_interval = IntervalLimiter(interval)
 
-    limiter.limiter.inc()
-    limiter.limiter.inc()
-    limiter.limiter.inc(2)
+    limiter.inc()
+    limiter.inc()
+    count = limiter_interval.inc()
 
-    assert limiter.limiter.count == 4
-
-
-@pytest.mark.asyncio
-async def test_rate_limiter_check_limit_with_wait():
-    max_tasks = 1
-    duration = 10000
-    concurrency = 3
-    interval = 10
-    limiter = RateLimiter(max_tasks, duration, concurrency, interval)
-
-    limiter.limiter.inc()
-    await limiter.check_limit()
-    await asyncio.sleep(1)
-
-    limiter.limiter.inc(2)
-    start_time = time.time()
-    await limiter.check_limit()
-    end_time = time.time()
-
-    elapsed_time = end_time - start_time
-    expected_wait_time = duration / 1000
-    tolerance = 1000
-    assert (
-        expected_wait_time - tolerance <= elapsed_time <= expected_wait_time + tolerance
-    )
+    assert limiter.count == 2
+    assert count == None
 
 
 @pytest.mark.asyncio
-async def test_rate_limiter_check_limit_no_wait():
-    max_tasks = 2
-    duration = 5000
-    concurrency = 1
-    interval = 200
-    limiter = RateLimiter(max_tasks, duration, concurrency, interval)
+async def test_rate_limiter_get():
+    max_tasks = 5
+    duration = 1
+    interval = 2
+    limiter = FixedWindowLimiter(max_tasks, duration, interval)
+    limiter_interval = IntervalLimiter(interval)
 
-    limiter.limiter.inc(2)
-    await limiter.check_limit()
-    await asyncio.sleep(1)
-    assert limiter.limiter.get() == max_tasks - limiter.limiter.count
-
-    start_time = time.time()
-    await limiter.check_limit()
-    end_time = time.time()
-    assert interval / 1000 - 2 <= end_time - start_time <= interval / 1000 + 2
+    limiter.count = 5
+    limiter_interval.count = 5
+    assert limiter.get(1) == max_tasks - limiter.count
+    assert limiter_interval.get(max_tasks) == max_tasks
 
 
 @pytest.mark.asyncio
-async def test_rate_limiter_reset():
-    max_tasks = 3
-    duration = 1000
-    concurrency = 2
-    interval = 200
-    limiter = RateLimiter(max_tasks, duration, concurrency, interval)
+async def test_rate_limiter_timeout_interval():
+    max_tasks = 5
+    duration = 1
+    interval = 5
+    limiter = FixedWindowLimiter(max_tasks, duration, interval)
+    limiter_interval = IntervalLimiter(interval)
 
-    limiter.limiter.inc()
-    limiter.limiter.inc()
-    limiter.limiter.inc()
+    timeout = limiter.timeout()
+    assert timeout == interval
 
-    await asyncio.sleep(duration / 1000)
-    await limiter.check_limit()
+    timeout = limiter_interval.timeout()
+    assert timeout == interval
 
-    assert limiter.limiter.count == 0
+
+@pytest.mark.asyncio
+async def test_rate_limiter_timeout_new_interval():
+    max_tasks = 5
+    duration = 30
+    interval = 1
+    limiter = FixedWindowLimiter(max_tasks, duration, interval)
+
+    limiter.timeout()
+    limiter.count = 5
+
+    timeout = limiter.timeout()
+    assert interval <= timeout
+
+
+@pytest.mark.asyncio
+async def test_rate_limiter_timeout_reset_count():
+    max_tasks = 5
+    duration = 5
+    interval = 2
+    limiter = FixedWindowLimiter(max_tasks, duration, interval)
+
+    limiter.count = 5
+    limiter.timeout()
+
+    assert limiter.count == 0
