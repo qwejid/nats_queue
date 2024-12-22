@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 import time
 import uuid
-from typing import Any, Optional, Dict
+from typing import Any, Dict
 
 
 class Job:

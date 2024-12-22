@@ -1,4 +1,3 @@
-import uuid
 import pytest
 import pytest_asyncio
 import json
@@ -55,7 +54,7 @@ async def test_queue_close_success():
     await queue.setup()
     await queue.manager.delete_stream(queue.name)
     await queue.close()
-    assert queue.client.is_closed == True
+    assert queue.client.is_closed is True
 
 
 @pytest.mark.asyncio

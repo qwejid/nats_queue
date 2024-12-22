@@ -1,4 +1,3 @@
-import uuid
 import pytest
 from nats_queue.nats_job import Job
 

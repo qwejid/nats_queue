@@ -3,9 +3,9 @@ from datetime import datetime
 import json
 import logging
 import time
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from typing import Awaitable, Callable, Dict, List, Optional
 import uuid
-from nats_queue.nats_limiter import FixedWindowLimiter, IntervalLimiter, Limiter
+from nats_queue.nats_limiter import FixedWindowLimiter, IntervalLimiter
 from nats.js.client import JetStreamContext
 from nats.aio.client import Client
 from nats.aio.msg import Msg
@@ -107,7 +107,7 @@ class Worker:
                 delay = int(planned_time.total_seconds())
                 await job.nak(delay=delay)
                 logger.debug(
-                    f"Job: {job_data["name"]} id={job_data["id"]} is scheduled for later. "
+                    f"Job: {job_data["name"]} id={job_data["id"]} is scheduled later"
                     f"Requeueing in {delay} seconds."
                 )
                 return
@@ -120,7 +120,8 @@ class Worker:
                 return
 
             logger.info(
-                f'Job: {job_data["name"]} id={job_data["id"]} is started with data={job_data["data"]}) in queue={job_data["queue_name"]}'
+                f"""Job: {job_data["name"]} id={job_data["id"]} is started
+                with data={job_data["data"]}) in queue={job_data["queue_name"]}"""
             )
 
             timeout = job_data["meta"]["timeout"]
@@ -160,17 +161,20 @@ class Worker:
         try:
             msgs = await sub.fetch(count, timeout=self.fetch_timeout)
             logger.debug(
-                f"Consumer: name={(await sub.consumer_info()).name} fetched {len(msgs)} messages"
+                f"""Consumer: name={(await sub.consumer_info()).name}
+                fetched {len(msgs)} messages"""
             )
             return msgs
         except TimeoutError:
             logger.debug(
-                f"Consumer: name={(await sub.consumer_info()).name} failed to fetch messages: TimeoutError"
+                f"""Consumer: name={(await sub.consumer_info()).name}
+                failed to fetch messages: TimeoutError"""
             )
             return []
         except Exception as e:
             logger.error(
-                f"Consumer: name={(await sub.consumer_info()).name} error while fetching messages: {e}"
+                f"""Consumer: name={(await sub.consumer_info()).name}
+                error while fetching messages: {e}"""
             )
             raise
 
@@ -183,12 +187,14 @@ class Worker:
                     topic, durable=f"worker_group_{priority}"
                 )
                 logger.info(
-                    f"Consumer: name={self.name} successfully subscribed to topic {topic}."
+                    f"""Consumer: name={self.name}
+                    successfully subscribed to topic {topic}."""
                 )
                 subscriptions.append(sub)
             except Exception as e:
                 logger.error(
-                    f"Consumer: name={self.name} error while subscribing to topic {topic}: {e}"
+                    f"""Consumer: name={self.name} error
+                    while subscribing to topic {topic}: {e}"""
                 )
                 raise
 

@@ -1,5 +1,4 @@
 import logging
-import nats
 from nats.aio.client import Client
 from nats.js.errors import BadRequestError
 import json

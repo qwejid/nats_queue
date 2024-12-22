@@ -122,11 +122,11 @@ async def test_worker_fetch_messages_success(get_client):
     jobs = [
         Job(
             queue_name="my_queue",
-            name=f"task_1",
+            name="task_1",
         ),
         Job(
             queue_name="my_queue",
-            name=f"task_2",
+            name="task_2",
         ),
     ]
     await queue.addJobs(jobs)
@@ -329,7 +329,7 @@ async def test_worker_get_subscriptions_error(get_client):
     client = get_client
 
     worker = Worker(client, name="my_queue", processor=process_job)
-    with pytest.raises(Exception) as e:
+    with pytest.raises(Exception):
         await worker.get_subscriptions()
 
 

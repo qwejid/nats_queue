@@ -1,6 +1,4 @@
-import asyncio
 import pytest
-import time
 from nats_queue.nats_limiter import FixedWindowLimiter, IntervalLimiter
 
 
@@ -33,7 +31,7 @@ async def test_rate_limiter_increment():
     count = limiter_interval.inc()
 
     assert limiter.count == 2
-    assert count == None
+    assert count is None
 
 
 @pytest.mark.asyncio
