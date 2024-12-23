@@ -5,6 +5,7 @@ import logging
 import time
 from typing import Awaitable, Callable, Dict, List, Optional
 import uuid
+from logging import Logger
 from nats_queue.nats_limiter import FixedWindowLimiter, IntervalLimiter
 from nats.js.client import JetStreamContext
 from nats.aio.client import Client
@@ -29,6 +30,7 @@ class Worker:
         max_retries: int = 3,
         priorities: int = 1,
         limiter: Dict[str, int] = None,
+        logger: Logger = logger,
     ):
         self.client = client
         self.name = name
@@ -50,13 +52,17 @@ class Worker:
 
         self.manager: Optional[JetStreamContext] = None
         self.consumers: Optional[List[JetStreamContext.PullSubscription]] = None
-        self.running = False
-        self.processing_now = 0
+        self.running: bool = False
+        self.processing_now: int = 0
         self.loop_task: Optional[asyncio.Task] = None
+        self.logger: Logger = logger
 
-        logger.info(
-            f"Worker initialized with name={self.name}, "
-            f"concurrency={self.concurrency}, priorities={self.priorities}"
+        self.logger.info(
+            (
+                f"Worker initialized with name={self.name}, "
+                f"concurrency={self.concurrency}, "
+                f"priorities={self.priorities}"
+            )
         )
 
     async def setup(self):
@@ -106,37 +112,43 @@ class Worker:
                 planned_time = job_start_time - datetime.now()
                 delay = int(planned_time.total_seconds())
                 await job.nak(delay=delay)
-                logger.debug(
-                    f"""Job: {job_data['name']} id={job_data['id']} is scheduled later
-                    Requeueing in {delay} seconds"""
+                self.logger.debug(
+                    (
+                        f"Job: {job_data['name']} id={job_data['id']} is scheduled later"
+                        f"Requeueing in {delay} seconds"
+                    )
                 )
                 return
 
             if job_data.get("meta").get("retry_count") > self.max_retries:
                 await job.term()
-                logger.warning(
+                self.logger.warning(
                     f"Job: {job_data['name']} id={job_data['id']} max retries exceeded"
                 )
                 return
 
-            logger.info(
-                f"""Job: {job_data['name']} id={job_data['id']} is started
-                with data={job_data['data']}) in queue={job_data['queue_name']}"""
+            self.logger.info(
+                (
+                    f"ob: {job_data['name']} id={job_data['id']} is started"
+                    f"with data={job_data['data']}) in queue={job_data['queue_name']}"
+                )
             )
 
             timeout = job_data["meta"]["timeout"]
             await asyncio.wait_for(self.processor(job_data["data"]), timeout=timeout)
 
             await job.ack_sync()
-            logger.info(f'Job: {job_data["name"]} id={job_data["id"]} is completed')
+            self.logger.info(
+                f'Job: {job_data["name"]} id={job_data["id"]} is completed'
+            )
 
         except Exception as e:
             if isinstance(e, asyncio.TimeoutError):
-                logger.error(
+                self.logger.error(
                     f"Job: {job_data['name']} id={job_data['id']} TimeoutError: {e}"
                 )
             else:
-                logger.error(f"Error while processing job {job_data['id']}: {e}")
+                self.logger.error(f"Error while processing job {job_data['id']}: {e}")
 
             job_data["meta"]["retry_count"] += 1
             new_job = Job(
@@ -160,21 +172,28 @@ class Worker:
     ) -> List[Optional[Msg]]:
         try:
             msgs = await sub.fetch(count, timeout=self.fetch_timeout)
-            logger.debug(
-                f"""Consumer: name={(await sub.consumer_info()).name}
-                fetched {len(msgs)} messages"""
+            self.logger.debug(
+                (
+                    f"Consumer: name={(await sub.consumer_info()).name}"
+                    f"fetched {len(msgs)} messages"
+                    ""
+                )
             )
             return msgs
         except TimeoutError:
-            logger.debug(
-                f"""Consumer: name={(await sub.consumer_info()).name}
-                failed to fetch messages: TimeoutError"""
+            self.logger.debug(
+                (
+                    f"Consumer: name={(await sub.consumer_info()).name}"
+                    f"failed to fetch messages: TimeoutError"
+                )
             )
             return []
         except Exception as e:
-            logger.error(
-                f"""Consumer: name={(await sub.consumer_info()).name}
-                error while fetching messages: {e}"""
+            self.logger.error(
+                (
+                    f"Consumer: name={(await sub.consumer_info()).name}"
+                    f"error while fetching messages: {e}"
+                )
             )
             raise
 
@@ -186,15 +205,17 @@ class Worker:
                 sub = await self.manager.pull_subscribe(
                     topic, durable=f"worker_group_{priority}"
                 )
-                logger.info(
-                    f"""Consumer: name={self.name}
-                    successfully subscribed to topic {topic}."""
+                self.logger.info(
+                    (
+                        f"Consumer: name={self.name}"
+                        f"successfully subscribed to topic {topic}."
+                    )
                 )
                 subscriptions.append(sub)
             except Exception as e:
-                logger.error(
-                    f"""Consumer: name={self.name} error
-                    while subscribing to topic {topic}: {e}"""
+                self.logger.error(
+                    f"Consumer: name={self.name} error"
+                    f"while subscribing to topic {topic}: {e}"
                 )
                 raise
 

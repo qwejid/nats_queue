@@ -5,7 +5,6 @@ from nats.errors import ConnectionClosedError
 import json
 from dotenv import load_dotenv
 from logging import Logger
-
 from nats_queue.nats_job import Job
 
 load_dotenv()
@@ -37,8 +36,9 @@ class Queue:
         self.client = client
         self.manager = None
         self.duplicate_window = duplicate_window
+        self.logger: Logger = logger
 
-        logger.info(
+        self.logger.info(
             f"Queue initialized with name={self.name}, priorities={self.priorities}"
         )
 
@@ -52,26 +52,28 @@ class Queue:
                 subjects=subjects,
                 duplicate_window=self.duplicate_window,
             )
-            logger.info(f"Stream '{self.name}' created successfully.")
+            self.logger.info(f"Stream '{self.name}' created successfully.")
         except BadRequestError:
-            logger.warning(f"Stream '{self.name}' already exists. Attempting to update")
+            self.logger.warning(
+                f"Stream '{self.name}' already exists. Attempting to update"
+            )
             await self.manager.update_stream(
                 name=self.name,
                 subjects=subjects,
                 duplicate_window=self.duplicate_window,
             )
-            logger.info(f"Stream '{self.name}' updated successfully.")
+            self.logger.info(f"Stream '{self.name}' updated successfully.")
         except Exception as e:
-            logger.error(f"Error connecting to JetStream: {e}", exc_info=True)
+            self.logger.error(f"Error connecting to JetStream: {e}", exc_info=True)
             raise
 
     async def close(self):
         try:
             if self.client:
                 await self.client.close()
-                logger.info("Connection to NATS closed.")
+                self.logger.info("Connection to NATS closed.")
         except ConnectionClosedError:
-            logger.warning("Connection to NATS already closed.")
+            self.logger.warning("Connection to NATS already closed.")
 
     async def addJob(self, job: Job, priority: int = 1):
         if self.client.is_closed:
@@ -93,9 +95,9 @@ class Queue:
                 job_data,
                 headers={"Nats-Msg-Id": job.id},
             )
-            logger.info(f"Job ID={job.id} added successfully.")
+            self.logger.info(f"Job ID={job.id} added successfully.")
         except Exception as e:
-            logger.error(f"Failed to add job ID={job.id}: {e}", exc_info=True)
+            self.logger.error(f"Failed to add job ID={job.id}: {e}", exc_info=True)
             raise
 
     async def addJobs(self, jobs: list[Job], priority: int = 1):
