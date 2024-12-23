@@ -1,6 +1,7 @@
 import logging
 from nats.aio.client import Client
 from nats.js.errors import BadRequestError
+from nats.errors import ConnectionClosedError
 import json
 from dotenv import load_dotenv
 from logging import Logger
@@ -65,12 +66,16 @@ class Queue:
             raise
 
     async def close(self):
-        if self.client:
-            logger.info("Closing connection to NATS...")
-            await self.client.close()
-            logger.info("Connection to NATS closed.")
+        try:
+            if self.client:
+                await self.client.close()
+                logger.info("Connection to NATS closed.")
+        except ConnectionClosedError:
+            logger.warning("Connection to NATS already closed.")
 
     async def addJob(self, job: Job, priority: int = 1):
+        if self.client.is_closed:
+            raise Exception("Cannot add job when NATS connection is closed.")
         if self.manager is None:
             raise Exception("Call setup before creating a new job")
         if not isinstance(job, Job):

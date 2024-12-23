@@ -36,6 +36,17 @@ async def test_queue_initialization(get_client):
 
 
 @pytest.mark.asyncio
+async def test_queue_initialization_error(get_client):
+    name = ""
+    priorities = 3
+    client = get_client
+    with pytest.raises(ValueError, match="Parameter 'name' cannot be empty"):
+        queue = Queue(client, name, priorities)
+    with pytest.raises(ValueError, match=""):
+        queue = Queue(client, "name", 0)
+
+
+@pytest.mark.asyncio
 async def test_queue_connect_success(get_client):
     name = "test_topic"
     client = get_client
@@ -189,3 +200,46 @@ async def test_create_stream_with_diff_conf(get_client):
     duplicate_window = stream.config.duplicate_window
     assert name == "my_queue"
     assert duplicate_window == queue2.duplicate_window
+
+
+@pytest.mark.asyncio
+async def test_close_one_client():
+    client = await nats.connect(servers=["nats://localhost:4222"])
+    queue = Queue(client, name="my_queue", duplicate_window=1)
+    queue2 = Queue(client, name="my_queue2", duplicate_window=1)
+    await queue.setup()
+    await queue2.setup()
+
+    await queue.close()
+    assert queue.client.is_closed is True
+    await queue2.close()
+    assert queue2.client.is_closed is True
+
+
+@pytest.mark.asyncio
+async def test_add_job_to_close_client():
+    client = await nats.connect(servers=["nats://localhost:4222"])
+    queue = Queue(client, name="my_queue", duplicate_window=1)
+    await queue.setup()
+    await queue.close()
+    assert queue.client.is_closed is True
+
+    job = Job(
+        queue_name="my_queue",
+        name="test_job",
+        data={"key": "value"},
+    )
+    with pytest.raises(
+        Exception, match="Cannot add job when NATS connection is closed."
+    ):
+        await queue.addJob(job, priority=1)
+
+
+@pytest.mark.asyncio
+async def test_create_queue_with_one_conf(get_client):
+    client = get_client
+    queue = Queue(client, name="my_queue", duplicate_window=1)
+    await queue.setup()
+
+    queue2 = Queue(client, name="my_queue", duplicate_window=1)
+    await queue2.setup()
