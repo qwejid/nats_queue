@@ -114,7 +114,8 @@ class Worker:
                 await job.nak(delay=delay)
                 self.logger.debug(
                     (
-                        f"Job:{job_data['name']} id={job_data['id']} is scheduled later "
+                        f"Job:{job_data['name']} id={job_data['id']} is "
+                        f"scheduled later "
                         f"Requeueing in {delay} seconds"
                     )
                 )
