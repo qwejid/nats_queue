@@ -130,8 +130,8 @@ class Worker:
 
             self.logger.info(
                 (
-                    f"ob: {job_data['name']} id={job_data['id']} is started "
-                    f"with data={job_data['data']}) in queue={job_data['queue_name']}"
+                    f"Job: {job_data['name']} id={job_data['id']} is started "
+                    f"with data={job_data['data']} in queue={job_data['queue_name']}"
                 )
             )
 
