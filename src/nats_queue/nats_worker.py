@@ -114,7 +114,7 @@ class Worker:
                 await job.nak(delay=delay)
                 self.logger.debug(
                     (
-                        f"Job:{job_data['name']} id={job_data['id']} is scheduled later"
+                        f"Job:{job_data['name']} id={job_data['id']} is scheduled later "
                         f"Requeueing in {delay} seconds"
                     )
                 )
@@ -129,7 +129,7 @@ class Worker:
 
             self.logger.info(
                 (
-                    f"ob: {job_data['name']} id={job_data['id']} is started"
+                    f"ob: {job_data['name']} id={job_data['id']} is started "
                     f"with data={job_data['data']}) in queue={job_data['queue_name']}"
                 )
             )
@@ -174,7 +174,7 @@ class Worker:
             msgs = await sub.fetch(count, timeout=self.fetch_timeout)
             self.logger.debug(
                 (
-                    f"Consumer: name={(await sub.consumer_info()).name}"
+                    f"Consumer: name={(await sub.consumer_info()).name} "
                     f"fetched {len(msgs)} messages"
                     ""
                 )
@@ -183,7 +183,7 @@ class Worker:
         except TimeoutError:
             self.logger.debug(
                 (
-                    f"Consumer: name={(await sub.consumer_info()).name}"
+                    f"Consumer: name={(await sub.consumer_info()).name} "
                     f"failed to fetch messages: TimeoutError"
                 )
             )
@@ -191,7 +191,7 @@ class Worker:
         except Exception as e:
             self.logger.error(
                 (
-                    f"Consumer: name={(await sub.consumer_info()).name}"
+                    f"Consumer: name={(await sub.consumer_info()).name} "
                     f"error while fetching messages: {e}"
                 )
             )
@@ -207,14 +207,14 @@ class Worker:
                 )
                 self.logger.info(
                     (
-                        f"Consumer: name={self.name}"
+                        f"Consumer: name={self.name} "
                         f"successfully subscribed to topic {topic}."
                     )
                 )
                 subscriptions.append(sub)
             except Exception as e:
                 self.logger.error(
-                    f"Consumer: name={self.name} error"
+                    f"Consumer: name={self.name} error "
                     f"while subscribing to topic {topic}: {e}"
                 )
                 raise
