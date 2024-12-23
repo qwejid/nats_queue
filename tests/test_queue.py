@@ -41,9 +41,9 @@ async def test_queue_initialization_error(get_client):
     priorities = 3
     client = get_client
     with pytest.raises(ValueError, match="Parameter 'name' cannot be empty"):
-        queue = Queue(client, name, priorities)
+        Queue(client, name, priorities)
     with pytest.raises(ValueError, match=""):
-        queue = Queue(client, "name", 0)
+        Queue(client, "name", 0)
 
 
 @pytest.mark.asyncio
