@@ -9,8 +9,8 @@ from logging import Logger
 from nats_queue.nats_limiter import FixedWindowLimiter, IntervalLimiter
 from nats.js.client import JetStreamContext
 from nats.aio.client import Client
+from nats.js.kv import KeyValue
 from nats.aio.msg import Msg
-from nats_queue.nats_job import Job
 from nats.errors import TimeoutError
 
 logger = logging.getLogger("nats_queue")
@@ -56,6 +56,7 @@ class Worker:
         self.processing_now: int = 0
         self.loop_task: Optional[asyncio.Task] = None
         self.logger: Logger = logger
+        self.kv: Optional[KeyValue] = None
 
         self.logger.info(
             (
@@ -69,6 +70,7 @@ class Worker:
         try:
             self.manager = self.client.jetstream()
             self.consumers = await self.get_subscriptions()
+            self.kv = await self.manager.key_value(f"{self.name}_parent_id")
         except Exception as e:
             raise e
 
@@ -91,11 +93,13 @@ class Worker:
         while self.running:
             for consumer in self.consumers:
                 max_jobs = self.limiter.get(self.concurrency - self.processing_now)
-                if max_jobs == 0:
+                if max_jobs <= 0:
                     continue
                 jobs = await self.fetch_messages(consumer, max_jobs)
                 if jobs:
                     break
+            else:
+                jobs = []
 
             for job in jobs:
                 self.limiter.inc()
@@ -103,10 +107,46 @@ class Worker:
 
             await asyncio.sleep(self.limiter.timeout())
 
+    async def _mark_parents_failed(self, job_data: dict):
+        parent_id = job_data["meta"].get("parent_id")
+        if not parent_id:
+            return
+
+        parent_job = await self.kv.get(parent_id)
+        if not parent_job:
+            self.logger.warning(
+                f"Parent job with ID {parent_id} not found in KV store."
+            )
+            return
+
+        parent_job_data = json.loads(parent_job.value.decode())
+
+        parent_job_data["meta"]["failed"] = True
+        await self._publish_parent_job(parent_job_data)
+        await self._mark_parents_failed(parent_job_data)
+
+    async def _publish_parent_job(self, parent_job_data):
+        subject = f"{parent_job_data['queue_name']}.{parent_job_data['name']}.1"
+        job_bytes = json.dumps(parent_job_data).encode()
+        await self.manager.publish(
+            subject, job_bytes, headers={"Nats-Msg-Id": parent_job_data["id"]}
+        )
+        self.logger.info(
+            f"Parent Job id={parent_job_data['id']} "
+            f"subject={subject} added successfully"
+        )
+
     async def _process_task(self, job: Msg):
         try:
             self.processing_now += 1
             job_data = json.loads(job.data.decode())
+            if job_data["meta"].get("faild"):
+                await job.term()
+                self.logger.warning(
+                    f"Job: {job_data['name']} id={job_data['id']} failed because "
+                    f"child job did not complete successfully "
+                )
+
             job_start_time = datetime.fromisoformat(job_data["meta"]["start_time"])
             if job_start_time > datetime.now():
                 planned_time = job_start_time - datetime.now()
@@ -124,8 +164,11 @@ class Worker:
             if job_data.get("meta").get("retry_count") > self.max_retries:
                 await job.term()
                 self.logger.warning(
-                    f"Job: {job_data['name']} id={job_data['id']} max retries exceeded"
+                    f"Job: {job_data['name']} id={job_data['id']} "
+                    f"failed max retries exceeded"
                 )
+
+                await self._mark_parents_failed(job_data)
                 return
 
             self.logger.info(
@@ -143,27 +186,37 @@ class Worker:
                 f'Job: {job_data["name"]} id={job_data["id"]} is completed'
             )
 
+            parent_id = job_data["meta"].get("parent_id")
+            if parent_id:
+                parent_job_data = json.loads(
+                    (await self.kv.get(parent_id)).value.decode()
+                )
+                parent_job_data["children_count"] -= 1
+                await self.kv.put(parent_id, json.dumps(parent_job_data).encode())
+                if parent_job_data["children_count"] == 0:
+                    await self.kv.delete(parent_id)
+                    await self._publish_parent_job(parent_job_data)
+
         except Exception as e:
             if isinstance(e, asyncio.TimeoutError):
                 self.logger.error(
-                    f"Job: {job_data['name']} id={job_data['id']} TimeoutError: {e}"
+                    f"Job: {job_data['name']} id={job_data['id']} "
+                    f"TimeoutError start retry"
                 )
             else:
-                self.logger.error(f"Error while processing job {job_data['id']}: {e}")
-
+                self.logger.error(
+                    f"Error while processing job {job_data['id']}: {e} start retry"
+                )
+            new_id = f"{uuid.uuid4()}_{int(time.time())}"
             job_data["meta"]["retry_count"] += 1
-            new_job = Job(
-                queue_name=job_data["queue_name"],
-                name=job_data["name"],
-                data=job_data["data"],
-                meta=job_data["meta"],
-            )
-            job_bytes = json.dumps(new_job.to_dict()).encode()
+            job_data["id"] = new_id
+
+            job_bytes = json.dumps(job_data).encode()
             await job.term()
             await self.manager.publish(
                 job.subject,
                 job_bytes,
-                headers={"Nats-Msg-Id": f"{uuid.uuid4()}_{int(time.time())}"},
+                headers={"Nats-Msg-Id": new_id},
             )
         finally:
             self.processing_now -= 1
