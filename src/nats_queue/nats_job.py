@@ -12,7 +12,7 @@ class Job:
         data: Dict[str, Any] = {},
         timeout=None,
         delay=0,
-        meta=None,
+        meta={},
     ):
         for param, param_name in [
             (queue_name, "queue_name"),
@@ -25,7 +25,7 @@ class Job:
         self.queue_name = queue_name
         self.name = name
         self.data = data
-        self.meta = meta or {
+        self.meta = meta | {
             "retry_count": 0,
             "start_time": (datetime.now() + timedelta(seconds=delay)).isoformat(),
             "timeout": timeout,
