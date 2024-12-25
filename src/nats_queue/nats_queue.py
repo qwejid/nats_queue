@@ -118,7 +118,7 @@ class Queue:
     async def addFlowJob(
         self, tree: Dict[str, Union[List[Job], Job]], priority: int = 1
     ):
-        async def traverse(node: Dict[str, List[Job] | Job], parent_id=None):
+        async def traverse(node: Dict[str, Union[List[Job], Job]], parent_id=None):
             current_job: Job = node["job"]
             if parent_id:
                 current_job.meta["parent_id"] = parent_id
