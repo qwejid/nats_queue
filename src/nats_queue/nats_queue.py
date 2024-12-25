@@ -1,5 +1,7 @@
 import logging
+from typing import Dict, List, Optional, Union
 from nats.aio.client import Client
+from nats.js.kv import KeyValue
 from nats.js.errors import BadRequestError
 from nats.errors import ConnectionClosedError
 import json
@@ -36,6 +38,7 @@ class Queue:
         self.client = client
         self.manager = None
         self.duplicate_window = duplicate_window
+        self.kv: Optional[KeyValue] = None
         self.logger: Logger = logger
 
         self.logger.info(
@@ -53,6 +56,11 @@ class Queue:
                 duplicate_window=self.duplicate_window,
             )
             self.logger.info(f"Stream '{self.name}' created successfully.")
+
+            self.kv = await self.manager.create_key_value(
+                bucket=f"{self.name}_parent_id"
+            )
+
         except BadRequestError:
             self.logger.warning(
                 f"Stream '{self.name}' already exists. Attempting to update"
@@ -106,3 +114,31 @@ class Queue:
 
         for job in jobs:
             await self.addJob(job, priority)
+
+    async def addFlowJob(
+        self, tree: Dict[str, Union[List[Job], Job]], priority: int = 1
+    ):
+        async def traverse(node: Dict[str, List[Job] | Job], parent_id=None):
+            current_job: Job = node["job"]
+            if parent_id:
+                current_job.meta["parent_id"] = parent_id
+
+            children = node.get("children", [])
+            if not children:
+                return [current_job]
+
+            await self.kv.put(
+                current_job.id,
+                json.dumps(
+                    {**current_job.to_dict(), "children_count": len(children)}
+                ).encode(),
+            )
+
+            deepest_jobs = []
+            for child in children:
+                deepest_jobs.extend(await traverse(child, current_job.id))
+
+            return deepest_jobs
+
+        deepest_jobs = await traverse(tree)
+        await self.addJobs(deepest_jobs, priority)
