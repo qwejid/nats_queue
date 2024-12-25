@@ -114,9 +114,7 @@ class Worker:
 
         parent_job = await self.kv.get(parent_id)
         if not parent_job:
-            self.logger.warning(
-                f"Parent job with ID {parent_id} not found in KV store."
-            )
+            self.logger.warning(f"ParentJob with id={parent_id} not found in KV store.")
             return
 
         parent_job_data = json.loads(parent_job.value.decode())
@@ -132,20 +130,22 @@ class Worker:
             subject, job_bytes, headers={"Nats-Msg-Id": parent_job_data["id"]}
         )
         self.logger.info(
-            f"Parent Job id={parent_job_data['id']} "
-            f"subject={subject} added successfully"
+            f"ParentJob: name={parent_job_data['name']} "
+            f"id={parent_job_data['id']} "
+            f"added to topic={subject} successfully"
         )
 
     async def _process_task(self, job: Msg):
         try:
             self.processing_now += 1
             job_data = json.loads(job.data.decode())
-            if job_data["meta"].get("faild"):
+            if job_data["meta"].get("failed"):
                 await job.term()
                 self.logger.warning(
-                    f"Job: {job_data['name']} id={job_data['id']} failed because "
-                    f"child job did not complete successfully "
+                    f"Job: name={job_data['name']} id={job_data['id']} failed "
+                    f"because child job failed to process"
                 )
+                return
 
             job_start_time = datetime.fromisoformat(job_data["meta"]["start_time"])
             if job_start_time > datetime.now():
@@ -154,7 +154,7 @@ class Worker:
                 await job.nak(delay=delay)
                 self.logger.debug(
                     (
-                        f"Job:{job_data['name']} id={job_data['id']} is "
+                        f"Job: name={job_data['name']} id={job_data['id']} is "
                         f"scheduled later "
                         f"Requeueing in {delay} seconds"
                     )
@@ -164,7 +164,7 @@ class Worker:
             if job_data.get("meta").get("retry_count") > self.max_retries:
                 await job.term()
                 self.logger.warning(
-                    f"Job: {job_data['name']} id={job_data['id']} "
+                    f"Job: name={job_data['name']} id={job_data['id']} "
                     f"failed max retries exceeded"
                 )
 
@@ -173,7 +173,7 @@ class Worker:
 
             self.logger.info(
                 (
-                    f"Job: {job_data['name']} id={job_data['id']} is started "
+                    f"Job: name={job_data['name']} id={job_data['id']} is started "
                     f"with data={job_data['data']} in queue={job_data['queue_name']}"
                 )
             )
@@ -200,7 +200,7 @@ class Worker:
         except Exception as e:
             if isinstance(e, asyncio.TimeoutError):
                 self.logger.error(
-                    f"Job: {job_data['name']} id={job_data['id']} "
+                    f"Job: name={job_data['name']} id={job_data['id']} "
                     f"TimeoutError start retry"
                 )
             else:
@@ -229,7 +229,7 @@ class Worker:
             self.logger.debug(
                 (
                     f"Consumer: name={(await sub.consumer_info()).name} "
-                    f"fetched {len(msgs)} messages"
+                    f"fetched {len(msgs)} messages from queue={self.name}"
                     ""
                 )
             )
@@ -238,7 +238,8 @@ class Worker:
             self.logger.debug(
                 (
                     f"Consumer: name={(await sub.consumer_info()).name} "
-                    f"failed to fetch messages: TimeoutError"
+                    f"failed to fetch messages from from queue={self.name}: "
+                    f"TimeoutError"
                 )
             )
             return []
@@ -246,7 +247,8 @@ class Worker:
             self.logger.error(
                 (
                     f"Consumer: name={(await sub.consumer_info()).name} "
-                    f"error while fetching messages: {e}"
+                    f"error while fetching messages from queue="
+                    f"{self.name}: {e}"
                 )
             )
             raise

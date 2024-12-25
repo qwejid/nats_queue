@@ -686,7 +686,7 @@ async def test_publish_parent_job(get_client):
 
 
 @pytest.mark.asyncio
-async def test__mark_parents_failed(get_client):
+async def test_mark_parents_failed(get_client):
     client = get_client
     queue = Queue(client, name="my_queue")
     await queue.setup()
