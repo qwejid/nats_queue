@@ -1,3 +1,4 @@
+from typing import Dict, List, Union
 import pytest
 import pytest_asyncio
 import json
@@ -243,3 +244,39 @@ async def test_create_queue_with_one_conf(get_client):
 
     queue2 = Queue(client, name="my_queue", duplicate_window=1)
     await queue2.setup()
+
+
+@pytest.mark.asyncio
+async def test_create_flow_job(get_client):
+
+    client = get_client
+    queue = Queue(client, name="my_queue")
+    await queue.setup()
+
+    flowJob: Dict[
+        str, Union[Job, List[Dict[str, Union[Job, List[Dict[str, Job]]]]]]
+    ] = {
+        "job": Job("my_queue", "parent_job"),
+        "children": [
+            {
+                "job": Job("my_queue", "child_job_1"),
+                "children": [
+                    {
+                        "job": Job("my_queue", "child_job_1_1"),
+                    },
+                    {"job": Job("my_queue", "child_job_1_2")},
+                ],
+            },
+            {"job": Job("my_queue", "child_job_2")},
+        ],
+    }
+    parent_job_id = [flowJob["job"].id, flowJob["children"][0]["job"].id]
+
+    await queue.addFlowJob(flowJob)
+    key_value = await queue.manager.key_value(f"{queue.name}_parent_id")
+    kv_keys = await key_value.keys()
+    assert set(kv_keys) == set(parent_job_id)
+
+    stream_info = await queue.manager.stream_info(queue.name)
+    messages = stream_info.state.messages
+    assert messages == 3
