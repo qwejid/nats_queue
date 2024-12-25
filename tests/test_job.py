@@ -7,6 +7,7 @@ def test_job_initialization():
         queue_name="my_queue",
         name="task_1",
         data={"key": "value"},
+        meta={"parent_id": "1"},
     )
 
     assert job.queue_name == "my_queue"
@@ -14,6 +15,7 @@ def test_job_initialization():
     assert job.data == {"key": "value"}
     assert job.meta["retry_count"] == 0
     assert job.meta["timeout"] is None
+    assert job.meta["parent_id"] == "1"
 
 
 def test_job_initialization_with_delay():

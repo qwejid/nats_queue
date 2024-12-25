@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "nats_queue"
-version = "1.1.1"
+version = "1.1.3"
 description = ""
 authors = ["Kristina Shishkina <k.shishkina@darwinsoft.ru>"]
 readme = "README.md"
