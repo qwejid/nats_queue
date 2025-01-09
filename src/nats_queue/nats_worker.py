@@ -33,9 +33,13 @@ class Worker:
         logger: Logger = logger,
         priorityQuota: Optional[Dict[int, Dict[str, int]]] = None,
     ):
-        if priorityQuota and set(priorityQuota.keys()) != set([priority for priority in range(1, priorities+1)]):
-            raise ValueError("The priority quota must contain settings for each priority")
-        
+        if priorityQuota and set(priorityQuota.keys()) != set(
+            [priority for priority in range(1, priorities + 1)]
+        ):
+            raise ValueError(
+                "The priority quota must contain settings for each priority"
+            )
+
         self.client = client
         self.name = name
         self.processor = processor
@@ -103,7 +107,7 @@ class Worker:
 
     def _reset_quotes_counter(self):
         for item in self.priorityQuota.values():
-                    item['counter'] = 0
+            item["counter"] = 0
 
     def _handle_quota(self, consumer_priority):
 
@@ -111,10 +115,15 @@ class Worker:
         current_counter = self.priorityQuota.get(consumer_priority, {}).get("counter")
         if current_quota - current_counter <= 0:
             if consumer_priority < self.priorities:
-                logger.debug(f"Skip consumer_priority={consumer_priority} due to quota overruns")
+                logger.debug(
+                    f"Skip consumer_priority={consumer_priority} due to quota overruns"
+                )
                 return True
             else:
-                logger.debug(f"Reset counters when quota is exceeded for consumer_priority={consumer_priority}")
+                logger.debug(
+                    f"Reset counters when quota is exceeded "
+                    f"for consumer_priority={consumer_priority}"
+                )
                 self._reset_quotes_counter()
                 return False
         return None
@@ -144,7 +153,7 @@ class Worker:
                     break
             for job in jobs:
                 if self.priorityQuota:
-                    self.priorityQuota[consumer_priority]['counter'] += 1
+                    self.priorityQuota[consumer_priority]["counter"] += 1
                 self.limiter.inc()
                 asyncio.create_task(self._process_task(job))
 
