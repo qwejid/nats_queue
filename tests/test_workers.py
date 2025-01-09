@@ -112,6 +112,20 @@ async def test_worker_setup_unknow_queue(get_client):
     with pytest.raises(Exception):
         await worker.setup()
 
+@pytest.mark.asyncio
+async def test_worker_error_priorityQuota(get_client):
+    client: Client = get_client
+
+    priorityQuota = {1: {"quota": 2}}
+    with pytest.raises(Exception, match="The priority quota must contain settings for each priority"):
+        worker = Worker(
+            client,
+            name="my_queue_1",
+            processor=process_job,
+            priorityQuota=priorityQuota,
+            priorities=2,
+        )
+
 
 @pytest.mark.asyncio
 async def test_worker_connect_stop_success(get_client):
@@ -790,6 +804,87 @@ async def test_process_task_with_flow_job(get_client):
 
     with pytest.raises(NoKeysError):
         await queue.kv.keys()
+
+@pytest.mark.asyncio
+async def test_handle_quota(get_client):
+    client = get_client
+    queue = Queue(client, name="my_queue", priorities=2)
+    await queue.setup()
+    priorityQuota = {1: {"quota": 2}, 2: {"quota": 2}}
+    
+    worker = Worker(
+        client, "my_queue", process_job, priorities=2, priorityQuota=priorityQuota
+    )
+    await worker.setup()
+
+    assert worker.priorityQuota == {
+                priority: {"quota": item["quota"], "counter": 0}
+                for priority, item in priorityQuota.items()
+            }
+    result = worker._handle_quota(1)
+    assert result is None
+
+    result = worker._handle_quota(2)
+    assert result is None
+
+    for priority in range(1, 3):
+        worker.priorityQuota[priority]['counter'] = worker.priorityQuota[priority]['quota']
+    
+    result = worker._handle_quota(1)
+    assert result is True
+
+    result = worker._handle_quota(2)
+    assert result is False
+
+@pytest.mark.asyncio
+async def test_reset_quotes_counter(get_client):
+    client = get_client
+    queue = Queue(client, name="my_queue", priorities=2)
+    await queue.setup()
+    priorityQuota = {1: {"quota": 2}, 2: {"quota": 2}}
+    
+    worker = Worker(
+        client, "my_queue", process_job, priorities=2, priorityQuota=priorityQuota
+    )
+    await worker.setup()
+
+    for priority in range(1, 3):
+        worker.priorityQuota[priority]['counter'] = worker.priorityQuota[priority]['quota']
+    
+    worker._reset_quotes_counter()
+
+    assert worker.priorityQuota[1]['counter'] == 0
+    assert worker.priorityQuota[2]['counter'] == 0
+
+@pytest.mark.asyncio
+async def test_priority_quota(get_client):
+    client = get_client
+    queue = Queue(client, name="my_queue", priorities=2)
+    await queue.setup()
+
+    job_1_1 = Job("my_queue", "job_1_1")
+    job_1_2 = Job("my_queue", "job_1_2")
+    job_1_3 = Job("my_queue", "job_1_3")
+
+    job_2_1 = Job("my_queue", "job_2_1")
+    job_2_2 = Job("my_queue", "job_2_2")
+    job_2_3 = Job("my_queue", "job_2_3")
+
+    await queue.addJobs([job_1_1, job_1_2, job_1_3], 1)
+    await queue.addJobs([job_2_1, job_2_2, job_2_3], 2)
+
+    priorityQuota = {1: {"quota": 2}, 2: {"quota": 2}}
+
+    worker = Worker(
+        client, "my_queue", process_job, priorities=2, priorityQuota=priorityQuota
+    )
+    await worker.setup()
+    await worker.start()
+    await asyncio.sleep(10)
+    await worker.stop()
+
+    msg_count = (await queue.manager.stream_info(queue.name)).state.messages
+    assert msg_count == 6
 
 
 async def process_job(job_data: Dict):
