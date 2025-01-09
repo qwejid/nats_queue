@@ -31,7 +31,11 @@ class Worker:
         priorities: int = 1,
         limiter: Dict[str, int] = None,
         logger: Logger = logger,
+        priorityQuota: Optional[Dict[int, Dict[str, int]]] = None,
     ):
+        if priorityQuota and set(priorityQuota.keys()) != set([priority for priority in range(1, priorities+1)]):
+            raise ValueError("The priority quota must contain settings for each priority")
+        
         self.client = client
         self.name = name
         self.processor = processor
@@ -57,6 +61,14 @@ class Worker:
         self.loop_task: Optional[asyncio.Task] = None
         self.logger: Logger = logger
         self.kv: Optional[KeyValue] = None
+        self.priorityQuota: Optional[Dict[int, Dict[str, int]]] = (
+            {
+                priority: {"quota": item["quota"], "counter": 0}
+                for priority, item in priorityQuota.items()
+            }
+            if priorityQuota
+            else None
+        )
 
         self.logger.info(
             (
@@ -89,19 +101,50 @@ class Worker:
             self.running = True
             self.loop_task = asyncio.create_task(self.loop())
 
+    def _reset_quotes_counter(self):
+        for item in self.priorityQuota.values():
+                    item['counter'] = 0
+
+    def _handle_quota(self, consumer_priority):
+
+        current_quota = self.priorityQuota.get(consumer_priority).get("quota")
+        current_counter = self.priorityQuota.get(consumer_priority, {}).get("counter")
+        if current_quota - current_counter <= 0:
+            if consumer_priority < self.priorities:
+                logger.debug(f"Skip consumer_priority={consumer_priority} due to quota overruns")
+                return True
+            else:
+                logger.debug(f"Reset counters when quota is exceeded for consumer_priority={consumer_priority}")
+                self._reset_quotes_counter()
+                return False
+        return None
+
     async def loop(self):
         while self.running:
-            for consumer in self.consumers:
+
+            for consumer_priority, consumer in enumerate(self.consumers, 1):
+                jobs = []
+
+                if self.priorityQuota:
+                    is_quota_met = self._handle_quota(consumer_priority)
+                    if is_quota_met is not None:
+                        if is_quota_met:
+                            continue
+                        else:
+                            break
+                    else:
+                        pass
+
                 max_jobs = self.limiter.get(self.concurrency - self.processing_now)
                 if max_jobs <= 0:
-                    continue
+                    break
+
                 jobs = await self.fetch_messages(consumer, max_jobs)
                 if jobs:
                     break
-            else:
-                jobs = []
-
             for job in jobs:
+                if self.priorityQuota:
+                    self.priorityQuota[consumer_priority]['counter'] += 1
                 self.limiter.inc()
                 asyncio.create_task(self._process_task(job))
 
@@ -183,7 +226,7 @@ class Worker:
 
             await job.ack_sync()
             self.logger.info(
-                f'Job: {job_data["name"]} id={job_data["id"]} is completed'
+                f'Job: name={job_data["name"]} id={job_data["id"]} is completed'
             )
 
             parent_id = job_data["meta"].get("parent_id")
